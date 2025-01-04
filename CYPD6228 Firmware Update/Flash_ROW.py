@@ -30,9 +30,9 @@ def erase_firmware(bus, address):
 
 def flash_row(bus, address, row_address, data):
     """Flashes a single row to the device."""
-    row_high_byte = (row_address >> 8) & 0xFF
-    row_low_byte = row_address & 0xFF
-    write_register(bus, address, 0x000C, [row_low_byte, row_high_byte] + list(data))
+    row_high_byte = (row_address >> 8) & 0xFF # row high byte
+    row_low_byte = row_address & 0xFF # row low byte
+    write_register(bus, address, 0x000C, [row_high_byte, row_low_byte] + list(data))
 
 def disable_pd_ports(bus, address):
     """Disables PD ports on the device."""
