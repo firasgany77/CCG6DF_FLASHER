@@ -99,7 +99,7 @@ def flash_row(bus, address, row_address, data):
     """Flashes a single row to the device."""
     row_high_byte = (row_address >> 8) & 0xFF # row high byte
     row_low_byte = row_address & 0xFF # row low byte
-    write_multi_byte(bus, address, 0x000C, [row_high_byte, row_low_byte] + list(data))
+    write_multi_byte(bus, address, FLASH_ROW_READ_WRITE, [row_high_byte, row_low_byte] + list(data))
 
 def disable_pd_ports(bus, address):
     """Disables PD ports on the device."""
@@ -166,7 +166,8 @@ def main():
     # Execute the command for debug purposes
     print("Executing debug command with fixed data...")
     try:
-        write_multi_byte(I2C_BUS, I2C_SLAVE_ADDR, FLASH_ROW_READ_WRITE, data)
+        #write_multi_byte(I2C_BUS, I2C_SLAVE_ADDR, FLASH_ROW_READ_WRITE, data)
+        flash_row(I2C_BUS, I2C_SLAVE_ADDR, 0x2140, data)
         print("Command executed successfully.")
     except Exception as e:
         print(f"Error executing debug command: {e}")
