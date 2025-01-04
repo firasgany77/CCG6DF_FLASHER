@@ -5,7 +5,7 @@ and read back the response code.
 
 Requirements:
   - pip install smbus2
-  - Adjust offsets (PD_CONTROL_OFFSET, RESPONSE_OFFSET) and I2C address as needed.
+  - Adjust offsets (PD_CONTROL_OFFSET_PORT0, RESPONSE_OFFSET) and I2C address as needed.
 """
 
 import time
@@ -16,15 +16,19 @@ I2C_BUS = 2  # e.g., /dev/i2c-2
 I2C_SLAVE_ADDR = 0x40  # The CCG device's I2C address
 
 # Offsets & Opcodes
-PD_CONTROL_OFFSET = 0x1006  # Example: PD_CONTROL (Port-0) in HPIv2 -- 0x2006 for Port-1
+PD_CONTROL_OFFSET_PORT0 = 0x1006  # (Port-0)
+PD_CONTROL_OFFSET_PORT1 = 0x2006  # (Port-1)
 PORT_DISABLE_OPCODE = 0x11  # Command for "Port Disable"
-RESPONSE_OFFSET = 0x1400  # Example: response register -- 0x2400 for Port-2
+RESPONSE_OFFSET_PORT0 = 0x1400  # (Port-0)
+RESPONSE_OFFSET_PORT1 = 0x2400 # (Port-1)
 SUCCESS_CODE = 0x02  # Example "command success" code
 RESET_OFFSET = 0x0800 # HPIv2 Address: 0x0008, Byte[1]: 00: i2c rest, 01: device reset.
 DEVICE_MODE_OFFSET = 0x0000
 ENTER_FLASHING_MODE_OFFSET = 0x000A
 READ_SILICON_ID = 0x0002 # Read Returns A0, Address: 0x0002 , Silicon Revision Major.Minor field 1.1 means A0 silicon. Likewise, 1.2 is A1 silicon.
 READ_DIE_INFO = 0x0033 # Address 0x0033
+JUMP_TO_BOOT_OFFSET = 0x0007 # read 4.2.3.6.2 HPIv2
+
 
 PDPORT_ENABLE = 0x002C
 # Commands like DEVICE RESET or JUMP_TO_BOOT should only be initiated after the SUCCESS response for the
@@ -42,6 +46,16 @@ PDPORT_ENABLE = 0x002C
 # 0x09: Invalid Arguments. Command handling failed due to invalid arguments.
 # 0x0A: Not Supported. Command not supported in the current mode.
 
+
+# In addition to the RESET command, CCG also supports a JUMP mechanism which can be used to request the
+# device to revert to Bootloader mode. In the case of a JUMP_TO_BOOT command, CCG stays in bootloader
+# mode so that the EC can perform a firmware update operation.
+
+# Since two different application firmware binaries (FW1 and FW2) are present under HPIv2, a special command
+# is provided to request transfer to the alternate firmware binary. The JUMP_TO_ALT_FW operation is requested
+# by writing a special signature into the JUMP_TO_BOOT register. This command can be useful in cases where
+# the functionality provided by each of the firmware binaries is different, and the user wants to select a specific
+# feature set at runtime.
 
 # Initialize the bus
 bus = smbus2.SMBus(I2C_BUS)
@@ -69,10 +83,6 @@ def i2c_read(offset_16b, num_bytes=1):
     low = (offset_16b >> 8) & 0xFF # 0xAB
     high = offset_16b & 0xFF # 0xCD
 
-    # Write phase: set the register offset
-    # Address example: 0x0800
-    # smbus2.i2c_msg.write (0x00, 0x08)
-    # smbus2.i2c_msg.read (0x08, 0x00)
     bus.i2c_rdwr(
         smbus2.i2c_msg.write(I2C_SLAVE_ADDR, [high, low])
     )
@@ -88,7 +98,7 @@ def read_response():
     Reads a single byte response code from RESPONSE_OFFSET.
     Returns None if nothing read.
     """
-    resp = i2c_read(RESPONSE_OFFSET, 1)
+    resp = i2c_read(RESPONSE_OFFSET_PORT0, 1)
     if resp:
         return resp[0]
     return None
@@ -96,11 +106,15 @@ def read_response():
 
 def main():
 
-    print("Sending 'RESET' command (opcode=0x00)...")
-    i2c_write_8bit(RESET_OFFSET, 0x00)
+    #print("Sending 'RESET' command (opcode=0x00)...") # NO RESPONSE for RESET command (0x00 is returned as response code).
+    #i2c_write_8bit(RESET_OFFSET, 0x00)
 
-    time.sleep(1)
+    print("Sending 'Port-0 Disable' command (opcode=0x11)...") # responses with 0x02 (SUCCESS). // Working One
+    i2c_write_8bit(PD_CONTROL_OFFSET_PORT0, PORT_DISABLE_OPCODE)
+    #print("Sending 'Port-1 Disable' command (opcode=0x11)...") # responses with 0x02 (SUCCESS).
+    i2c_write_8bit(PD_CONTROL_OFFSET_PORT1, PORT_DISABLE_OPCODE)
 
+    time.sleep(1) # minimum delay is needed to catch the response after write command
     # Read the response code of Reset Event
     resp_code = read_response()
     if resp_code is None:
@@ -113,15 +127,22 @@ def main():
             print("Command returned an error or unexpected code.")
 
 
+    #time.sleep(20)
+    #print("Sending 'Port Enable' command (opcode=0x03)...")
+    #i2c_write_8bit(PDPORT_ENABLE, 0x00)
+    #i2c_write_8bit(PDPORT_ENABLE, 0x01)
 
-    #print("Sending 'Port Disable' command (opcode=0x11)...")
-    #i2c_write_8bit(PD_CONTROL_OFFSET, PORT_DISABLE_OPCODE)
+
 
     #time.sleep(3)
 
-#    print("Entering Flashing Mode Command (opcode=0x00)...")
-#    i2c_write_8bit(ENTER_FLASHING_MODE_OFFSET, 0xFF)
+    #print("Entering Flashing Mode Command (opcode=0x00)...")
+    #i2c_write_8bit(ENTER_FLASHING_MODE_OFFSET, 0x01)
 
+    print("Initiating JUMP TO BOOT Command")
+    i2c_write_8bit(JUMP_TO_BOOT_OFFSET, 0x01)
+
+    time.sleep(0.5)
 
     print("Reading Device Mode Register")
     device_mode_reg_val = i2c_read(DEVICE_MODE_OFFSET, 1)
@@ -147,13 +168,6 @@ def main():
 #            print(f"Byte {i}: 0x{byte:02X}")
 #    else:
 #        print("Failed to read die_info_val")
-
-
-    #print("Sending 'Port Enable' command (opcode=0x01)...")
-
-    #i2c_write_8bit(PDPORT_ENABLE, 0x01)
-    #i2c_write_8bit(PDPORT_ENABLE, 0x11)
-    #i2c_write_8bit(PDPORT_ENABLE, 0x03)
 
 
     # Small delay to let the device process
