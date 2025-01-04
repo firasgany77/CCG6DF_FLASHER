@@ -127,10 +127,10 @@ def main():
             print("Command returned an error or unexpected code.")
 
 
-    #time.sleep(20)
-    #print("Sending 'Port Enable' command (opcode=0x03)...")
-    #i2c_write_8bit(PDPORT_ENABLE, 0x00)
-    #i2c_write_8bit(PDPORT_ENABLE, 0x01)
+    time.sleep(0.5)
+    print("Sending 'Port Enable' command (opcode=0x03)...")
+    i2c_write_8bit(PDPORT_ENABLE, 0x00)
+    i2c_write_8bit(PDPORT_ENABLE, 0x01)
 
 
 
@@ -142,7 +142,7 @@ def main():
     print("Initiating JUMP TO BOOT Command")
     i2c_write_8bit(JUMP_TO_BOOT_OFFSET, 0x01)
 
-    time.sleep(0.5)
+    time.sleep(1)
 
     print("Reading Device Mode Register")
     device_mode_reg_val = i2c_read(DEVICE_MODE_OFFSET, 1)
