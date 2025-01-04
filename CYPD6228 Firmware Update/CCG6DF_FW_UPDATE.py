@@ -8,6 +8,32 @@ Requirements:
   - Adjust offsets (PD_CONTROL_OFFSET_PORT0, RESPONSE_OFFSET) and I2C address as needed.
 """
 
+"""
+Steps for Firmware Update:
+. Check the DEVICE_MODE register.[Done]
+2. If CCG device is in FIRMWARE mode:
+    a. Disable the PD port using the Port Disable command [Done]
+    b. Wait for SUCCESS response [Done]
+    c. Initiate a JUMP_TO_BOOT command [Done]
+    d. Wait for a RESET_COMPLETE event (or ~10 ms delay). [Done] - How to read the event?
+3. Read DEVICE_MODE register and verify that device is in bootloader mode. [Fail]
+4. Initiate flashing mode entry using ENTER_FLASHING_MODE register.
+5. Clear the firmware metadata in flash memory
+    a. Fill the data memory with zeros.
+    b. Use the FLASH_ROW_READ_WRITE register to trigger a write of the “zero” buffer into the metadata flash row.
+    c. Wait for a SUCCESS response.
+6. For each flash row to be updated:
+    a. Copy the data into the data memory.
+    b. Use the FLASH_ROW_READ_WRITE register to trigger writing of data to the desired flash row.
+    c. Wait for a SUCCESS response.
+    d. If read-verify is required:
+   	 i. Use the FLASH_ROW_READ_WRITE register to trigger reading of data from the desired flash row.
+   	 ii. Wait for a FLASH_DATA_AVAILABLE response from CCG.
+   	 iii. Read the data from the data memory and verify.
+7. Use VALIDATE_FW register to request the new firmware to be validated.
+Use the RESET register to go through a fresh start-up cycle which will load the new firmware binary.
+"""
+
 import time
 import smbus2
 
