@@ -24,6 +24,7 @@ FLASH_ROW_READ_WRITE = 0x000C
 FW1_METADATA_ROW = 0xFF80  # Address of FW1 Metadata Row
 TBOOTWAIT_OFFSET = 0x14  # Offset for tBootWait parameter in the metadata
 PDPORT_ENABLE = 0x002C
+FIRMWARE_BINARY_LOCATION = 0x0028
 
 bus = smbus2.SMBus(I2C_BUS)
 
@@ -49,9 +50,7 @@ def i2c_read(offset_16b, num_bytes=1):
     low = (offset_16b >> 8) & 0xFF # 0xAB
     high = offset_16b & 0xFF # 0xCD
 
-    bus.i2c_rdwr(
-        smbus2.i2c_msg.write(I2C_SLAVE_ADDR, [high, low])
-    )
+    bus.i2c_rdwr(smbus2.i2c_msg.write(I2C_SLAVE_ADDR, [high, low]))
     # Read phase
     read_msg = smbus2.i2c_msg.read(I2C_SLAVE_ADDR, num_bytes)
     bus.i2c_rdwr(read_msg)
@@ -161,7 +160,7 @@ def main():
         0x88, 0x13, 0x00, 0x00, 0xF8, 0x20, 0x00, 0x20, 0x00, 0x20, 0x70, 0x47,
         0xF8, 0xB5, 0x0D, 0x46, 0x07, 0x46, 0xFE, 0xF7, 0x81, 0xFF, 0x06, 0x46,
         0x0A, 0x48, 0x01, 0x68
-    ] # size = 64 Bytes
+    ] # size = 64 Bytes, data for row address: 0x2140
 
     # Execute the command for debug purposes
     print("Executing debug command with fixed data...")
@@ -182,6 +181,23 @@ def main():
         else:
             print("Command returned an error or unexpected code.")
 
+
+    print("Read FW1_START and FW2_START")
+    try:
+        # Read 4 bytes from the FIRMWARE_BINARY_LOCATION register
+        firmware_location = i2c_read(FIRMWARE_BINARY_LOCATION, 4)
+
+        if firmware_location:
+            fw1_start = (firmware_location[0] << 8) | (firmware_location[1])  # FW1_START: Combine low and high bytes
+            fw2_start = (firmware_location[2] << 8) | (firmware_location[3])   # FW2_START: Combine low and high bytes
+
+            print(f"FW1_START: 0x{fw1_start:04X}")
+            print(f"FW2_START: 0x{fw2_start:04X}")
+        else:
+            print("Failed to read firmware location.")
+
+    except Exception as e:
+        print(f"Error: {e}")
 
    # try:
    #     flash_firmware(bus, address, firmware_file)
