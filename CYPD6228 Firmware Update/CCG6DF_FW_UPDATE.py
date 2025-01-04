@@ -27,7 +27,7 @@ DEVICE_MODE_OFFSET = 0x0000
 ENTER_FLASHING_MODE_OFFSET = 0x000A
 READ_SILICON_ID = 0x0002 # Read Returns A0, Address: 0x0002 , Silicon Revision Major.Minor field 1.1 means A0 silicon. Likewise, 1.2 is A1 silicon.
 READ_DIE_INFO = 0x0033 # Address 0x0033
-JUMP_TO_BOOT_OFFSET = 0x0007 # read 4.2.3.6.2 HPIv2
+JUMP_TO_BOOT_OFFSET = 0x0700 # read 4.2.3.6.2 HPIv2
 
 
 PDPORT_ENABLE = 0x002C
@@ -120,29 +120,44 @@ def main():
     if resp_code is None:
         print("No response received (None).")
     else:
-        print(f"Response code: 0x{resp_code:02X}")
+        print(f"Response code for PORT DISABLE CMD: 0x{resp_code:02X}")
         if resp_code == SUCCESS_CODE:
             print("Command succeeded!")
         else:
             print("Command returned an error or unexpected code.")
 
 
-    time.sleep(0.5)
-    print("Sending 'Port Enable' command (opcode=0x03)...")
-    i2c_write_8bit(PDPORT_ENABLE, 0x00)
-    i2c_write_8bit(PDPORT_ENABLE, 0x01)
-
-
+   #time.sleep(1)
+   #print("Sending 'Port Enable' command (opcode=0x03)...")
+   #i2c_write_8bit(PDPORT_ENABLE, 0x00)
+   #i2c_write_8bit(PDPORT_ENABLE, 0x01)
 
     #time.sleep(3)
 
-    #print("Entering Flashing Mode Command (opcode=0x00)...")
-    #i2c_write_8bit(ENTER_FLASHING_MODE_OFFSET, 0x01)
+
 
     print("Initiating JUMP TO BOOT Command")
-    i2c_write_8bit(JUMP_TO_BOOT_OFFSET, 0x01)
+    i2c_write_8bit(JUMP_TO_BOOT_OFFSET, 0x11)
+    time.sleep(3)
+    i2c_write_8bit(JUMP_TO_BOOT_OFFSET, 0x10)
+    time.sleep(3)
 
-    time.sleep(1)
+    print("Entering Flashing Mode Command (opcode=0x00)...")
+    i2c_write_8bit(ENTER_FLASHING_MODE_OFFSET, 0x11)
+
+
+    resp_code = read_response()
+    if resp_code is None:
+        print("No response received (None).")
+    else:
+        print(f"Response code for JUMP TO BOOT CMD: 0x{resp_code:02X}")
+        if resp_code == SUCCESS_CODE:
+            print("Command succeeded!")
+        else:
+            print("Command returned an error or unexpected code.")
+
+
+    time.sleep(3)
 
     print("Reading Device Mode Register")
     device_mode_reg_val = i2c_read(DEVICE_MODE_OFFSET, 1)
