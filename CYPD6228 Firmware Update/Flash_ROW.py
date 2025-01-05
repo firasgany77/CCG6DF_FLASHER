@@ -20,7 +20,8 @@ ENTER_FLASHING_MODE_OFFSET = 0x000A
 READ_SILICON_ID = 0x0002 # Read Returns A0, Address: 0x0002 , Silicon Revision Major.Minor field 1.1 means A0 silicon. Likewise, 1.2 is A1 silicon.
 READ_DIE_INFO = 0x0033 # Address 0x0033
 JUMP_TO_BOOT_OFFSET = 0x0007 # read 4.2.3.6.2 HPIv2
-FLASH_ROW_READ_WRITE = 0x000C
+FLASH_ROW_READ_WRITE = 0x000C # this register allows updading/reading specified flash row (128/256)
+# in HPIv2
 CCG6DF_FW1_METADATA_ADDR = 0xFF80
 CCG6DF_FW2_METADATA_ADDR = 0xFF00# Address of FW1 Metadata Row
 TBOOTWAIT_OFFSET = 0x1415  # Offset for tBootWait parameter in the metadata (datasheet says 0x14-0x15)
@@ -45,10 +46,10 @@ def i2c_write_8bit(offset_16b, data_byte):
     Write one byte (data_byte) to a 16-bit offset in little-endian order.
     """
     # 0xABCD
-    low = (offset_16b >> 8) & 0xFF # 0xAB
-    high = offset_16b & 0xFF # 0xCD
+    MS_Byte = (offset_16b >> 8) & 0xFF # 0xAB - MS-Byte
+    LS_Byte = offset_16b & 0xFF # 0xCD = LS-Byte
 
-    write_data = [high, low, data_byte]
+    write_data = [LS_Byte, MS_Byte, data_byte]
     bus.i2c_rdwr(
         smbus2.i2c_msg.write(I2C_SLAVE_ADDR, write_data)
     )
@@ -59,10 +60,10 @@ def i2c_read(offset_16b, num_bytes=1):
     Read num_bytes from a 16-bit offset in little-endian order.
     """
     # 0xABCD
-    low = (offset_16b >> 8) & 0xFF # 0xAB
-    high = offset_16b & 0xFF # 0xCD
+    MSB_Byte = (offset_16b >> 8) & 0xFF # MS-Byte
+    LSB_Byte = offset_16b & 0xFF # LS-Byte
 
-    bus.i2c_rdwr(smbus2.i2c_msg.write(I2C_SLAVE_ADDR, [high, low]))
+    bus.i2c_rdwr(smbus2.i2c_msg.write(I2C_SLAVE_ADDR, [LSB_Byte, MSB_Byte]))
     # Read phase
     read_msg = smbus2.i2c_msg.read(I2C_SLAVE_ADDR, num_bytes)
     bus.i2c_rdwr(read_msg)
@@ -281,8 +282,16 @@ def main():
     time.sleep(1)
     check_response()
 
+    #write_multi_byte(I2C_BUS, I2C_SLAVE_ADDR, PDPORT_ENABLE, [0x00,0x01])
+
     write_multi_byte(I2C_BUS, I2C_SLAVE_ADDR, PDPORT_ENABLE, 0x00)
+    time.sleep(1)
     write_multi_byte(I2C_BUS, I2C_SLAVE_ADDR, PDPORT_ENABLE, 0x01)
+
+    # PDPORT_ENABLE = 0x002C
+    # FLASH_ROW_READ_WRITE = 0x000C
+    #data = [0x01, 0x00, 0x03, 0x05]
+    #write_multi_byte(I2C_BUS, I2C_SLAVE_ADDR, 0x000C, [0x00, 0x2C] + list(data))
 
     #time.sleep(1)
     #print("Sending 'Port Enable' command (opcode=0x03)...")
@@ -294,7 +303,10 @@ def main():
     #time.sleep(1)
     #check_response()
 
-
+    #print("Sending 'RESET' command (opcode=0x00)...") # NO RESPONSE for RESET command (0x00 is returned as response code).
+    #i2c_write_8bit(RESET_OFFSET, 0x00)
+    #time.sleep(1)
+    #check_response()
 
     ###########################################################################################
     ###########################################################################################
