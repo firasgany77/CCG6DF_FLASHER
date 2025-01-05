@@ -24,7 +24,7 @@ FLASH_ROW_READ_WRITE = 0x000C
 CCG6DF_FW1_METADATA_ADDR = 0xFF80
 CCG6DF_FW2_METADATA_ADDR = 0xFF00# Address of FW1 Metadata Row
 TBOOTWAIT_OFFSET = 0x1415  # Offset for tBootWait parameter in the metadata (datasheet says 0x14-0x15)
-PDPORT_ENABLE = 0x002C
+PDPORT_ENABLE = 0x002C # 0x002C
 FIRMWARE_BINARY_LOCATION = 0x0028
 # Response Codes:
 # 0x00: No response. No outstanding command, event, or asynchronous message in the system.
@@ -94,8 +94,8 @@ def write_multi_byte(bus, address, register, data):
     Writes data to a specific register using i2ctransfer.
     """
     #Reg_Address: 0xABCD
-    high_byte = (register >> 8) & 0xFF # high: 0xAB
-    low_byte = register & 0xFF # low :0xCD
+    low_byte = (register >> 8) & 0xFF # low: 0xAB
+    high_byte = register & 0xFF # high :0xCD
     data = [data] if isinstance(data, int) else data
     command = f"sudo i2ctransfer -y {bus} w{len(data) + 2}@0x{address:02X} 0x{high_byte:02X} 0x{low_byte:02X} "
     command += " ".join(f"0x{byte:02X}" for byte in data)
@@ -274,18 +274,27 @@ def main():
     # Port-Disable and then Re-Enable Demonstration:
     print("Sending 'Port-0 Disable' command (opcode=0x11)...")  # responses with 0x02 (SUCCESS). // Working One
     i2c_write_8bit(PD_CONTROL_OFFSET_PORT0, PORT_DISABLE_OPCODE)
+    time.sleep(1)
+    check_response()
     print("Sending 'Port-1 Disable' command (opcode=0x11)...")  # responses with 0x02 (SUCCESS).
     i2c_write_8bit(PD_CONTROL_OFFSET_PORT1, PORT_DISABLE_OPCODE)
+    time.sleep(1)
+    check_response()
 
-    time.sleep(1)
-    print("Sending 'Port Enable' command (opcode=0x03)...")
-    i2c_write_8bit(PDPORT_ENABLE, 0x00)
-    time.sleep(1)
-    check_response()
-    
-    i2c_write_8bit(PDPORT_ENABLE, 0x01)
-    time.sleep(1)
-    check_response()
+    write_multi_byte(I2C_BUS, I2C_SLAVE_ADDR, PDPORT_ENABLE, 0x00)
+    write_multi_byte(I2C_BUS, I2C_SLAVE_ADDR, PDPORT_ENABLE, 0x01)
+
+    #time.sleep(1)
+    #print("Sending 'Port Enable' command (opcode=0x03)...")
+    #i2c_write_8bit(PDPORT_ENABLE, 0x00)
+    #time.sleep(1)
+    #check_response()
+
+    #i2c_write_8bit(PDPORT_ENABLE, 0x01)
+    #time.sleep(1)
+    #check_response()
+
+
 
     ###########################################################################################
     ###########################################################################################
