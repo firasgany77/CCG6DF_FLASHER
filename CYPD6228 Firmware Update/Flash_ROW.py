@@ -8,8 +8,8 @@ from intelhex import IntelHex
 I2C_BUS = 2  # e.g., /dev/i2c-2
 I2C_SLAVE_ADDR = 0x40  # The CCG device's I2C address
 FLASH_ROW_SIZE_BYTES = 128  # flash size for CCG6DF
-PD_CONTROL_OFFSET_PORT0 = 0x0610  # (Port-0) #0x1006
-PD_CONTROL_OFFSET_PORT1 = 0x0620  # (Port-1) @0x2006
+PD_CONTROL_OFFSET_PORT0 = 0x1006  # (Port-0) #0x1006
+PD_CONTROL_OFFSET_PORT1 = 0x2006  # (Port-1) @0x2006
 PORT_DISABLE_OPCODE = 0x11  # Command for "Port Disable"
 RESPONSE_OFFSET_PORT0 = 0x1400  # (Port-0)
 RESPONSE_OFFSET_PORT1 = 0x2400 # (Port-1)
@@ -26,7 +26,18 @@ CCG6DF_FW2_METADATA_ADDR = 0xFF00# Address of FW1 Metadata Row
 TBOOTWAIT_OFFSET = 0x1415  # Offset for tBootWait parameter in the metadata (datasheet says 0x14-0x15)
 PDPORT_ENABLE = 0x002C
 FIRMWARE_BINARY_LOCATION = 0x0028
-
+# Response Codes:
+# 0x00: No response. No outstanding command, event, or asynchronous message in the system.
+# 0x01: Reserved
+# 0x02: SUCCESS
+# 0x03: Flash Data Available, Flash row data requested by EC is available in Data Memory.
+# 0x05: Invalid Command. Partial, unaligned register write or invalid command.
+# 0x06: Invalid State: Command failed because it is not supported in the current state of the firmware.
+# 0x07: Flash Update Failed. Flash write operation failed.
+# 0x08: Invalid FW. FW validity check failed. See VALIDATE_FW command.
+# 0x09: Invalid Arguments. Command handling failed due to invalid arguments.
+# 0x0A: Not Supported. Command not supported in the current mode.
+# 0x0D: COMMAND FAILED – USB-C/HPI transaction in- progress.
 bus = smbus2.SMBus(I2C_BUS)
 
 def i2c_write_8bit(offset_16b, data_byte):
@@ -161,6 +172,26 @@ def flash_firmware(bus, address, firmware_file):
 
     print("Firmware flashing and activation complete.")
 
+def check_response():
+    """
+    Checks the response code from the device and prints the appropriate messages.
+    Returns:
+        bool: True if the command succeeded, False otherwise.
+    """
+    resp_code = read_response()
+    if resp_code is None:
+        print("No response received (None).")
+        return False
+    else:
+        print(f"Response code for Command: 0x{resp_code:02X}")
+        if resp_code == SUCCESS_CODE:
+            print("Command succeeded!")
+            return True
+        else:
+            print("Command returned an error or unexpected code.")
+            return False
+
+
 def main():
     firmware_file = "/home/firas/Documents/CYPD6228/CYPD6228-96BZXI_notebook_dualapp_usb4_3_5_1_4_0_0_1_nb.hex"
 
@@ -238,21 +269,23 @@ def main():
     else:
         print("Failed to read silicon_id_val.")
 
-
+    ###########################################################################################
+    ###########################################################################################
+    # Port-Disable and then Re-Enable Demonstration:
     print("Sending 'Port-0 Disable' command (opcode=0x11)...")  # responses with 0x02 (SUCCESS). // Working One
     i2c_write_8bit(PD_CONTROL_OFFSET_PORT0, PORT_DISABLE_OPCODE)
     print("Sending 'Port-1 Disable' command (opcode=0x11)...")  # responses with 0x02 (SUCCESS).
     i2c_write_8bit(PD_CONTROL_OFFSET_PORT1, PORT_DISABLE_OPCODE)
 
-    resp_code = read_response()
-    if resp_code is None:
-        print("No response received (None).")
-    else:
-        print(f"Response code for Write Command: 0x{resp_code:02X}")
-        if resp_code == SUCCESS_CODE:
-            print("Command succeeded!")
-        else:
-            print("Command returned an error or unexpected code.")
+    time.sleep(1)
+    print("Sending 'Port Enable' command (opcode=0x03)...")
+    i2c_write_8bit(PDPORT_ENABLE, 0x00)
+    time.sleep(1)
+    check_response()
+    
+    i2c_write_8bit(PDPORT_ENABLE, 0x01)
+    time.sleep(1)
+    check_response()
 
     ###########################################################################################
     ###########################################################################################

@@ -77,6 +77,7 @@ PDPORT_ENABLE = 0x002C
 # 0x08: Invalid FW. FW validity check failed. See VALIDATE_FW command.
 # 0x09: Invalid Arguments. Command handling failed due to invalid arguments.
 # 0x0A: Not Supported. Command not supported in the current mode.
+# 0x0D: COMMAND FAILED – USB-C/HPI transaction in- progress.
 
 
 # In addition to the RESET command, CCG also supports a JUMP mechanism which can be used to request the
