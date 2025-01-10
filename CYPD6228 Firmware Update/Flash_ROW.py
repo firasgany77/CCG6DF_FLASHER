@@ -285,14 +285,45 @@ def main():
     #write_multi_byte(I2C_BUS, I2C_SLAVE_ADDR, PDPORT_ENABLE, [0x00,0x01])
 
     write_multi_byte(I2C_BUS, I2C_SLAVE_ADDR, PDPORT_ENABLE, 0x00)
-    time.sleep(1)
+    #time.sleep(1)
     write_multi_byte(I2C_BUS, I2C_SLAVE_ADDR, PDPORT_ENABLE, 0x01)
 
-    # PDPORT_ENABLE = 0x002C
-    # FLASH_ROW_READ_WRITE = 0x000C
-    #data = [0x01, 0x00, 0x03, 0x05]
-    #write_multi_byte(I2C_BUS, I2C_SLAVE_ADDR, 0x000C, [0x00, 0x2C] + list(data))
+    #PDPORT_ENABLE = 0x002C # MSB-Byte = 00, LSB-Bye= 2C
+    # write_multi_byte(I2C_BUS, I2C_SLAVE_ADDR, 0x2C, [0x00, 0x01, 0x00])
+    #CUSTOMER_INFO = 0x0030 # MSB-Byte = 00, LSB-Bye= 30
+    # Memory address to write to
+    # I2C Configuration
+    from smbus2 import SMBus
 
+
+    # I2C Configuration
+    #I2C_SLAVE_ADDR = 0x40  # Replace with your device's I2C slave address
+    #memory_address = 0x0030  # Address for READ_CUSTOMER_INFO register
+    #signature = 0x43 # Ascii of C is 67, whhch is 0x43 in hex
+
+    # Extract MSB and LSB of memory address
+    #msb = (memory_address >> 8) & 0xFF
+    #lsb = memory_address & 0xFF
+
+    #try:
+        # Step 1: Write the signature 'C' at byte[0] of the WRITE operation
+        #print(f"Writing signature 'C' (byte[0]) to the device...")
+        #bus.write_i2c_block_data(I2C_SLAVE_ADDR, lsb, [lsb, msb, 0x5C, 0xE1])
+        #time.sleep(0.1)  # Small delay to allow processing
+
+        # Step 2: Read back the data from the same memory address
+        #print(f"Setting memory pointer to {hex(memory_address)} for read operation...")
+        #bus.write_i2c_block_data(I2C_SLAVE_ADDR, signature, [lsb, msb])  # Set memory address pointer
+        #time.sleep(0.1)  # Small delay to allow processing
+
+        #print("Reading data...")
+        #read_data = bus.read_i2c_block_data(I2C_SLAVE_ADDR, 0, 2)  # Read 2 bytes
+        #print(f"Read Data: {read_data}")
+
+    #except Exception as e:
+    #    print(f"Operation failed: {e}")
+    #finally:
+    #    bus.close()
     #time.sleep(1)
     #print("Sending 'Port Enable' command (opcode=0x03)...")
     #i2c_write_8bit(PDPORT_ENABLE, 0x00)

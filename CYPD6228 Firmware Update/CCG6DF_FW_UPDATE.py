@@ -209,8 +209,8 @@ def read_row(bus, address, row_address, row_size):
 
 def main():
 
-     print("Read tBootTime value from Metadata")
-     read_row(I2C_BUS, 0xFF80, 0x14, 128)
+     #print("Read tBootTime value from Metadata")
+     #read_row(I2C_BUS, 0xFF80, 0x14, 128)
 
      print("Sending 'Port-0 Disable' command (opcode=0x11)...") # responses with 0x02 (SUCCESS). // Working One
      i2c_write_8bit(PD_CONTROL_OFFSET_PORT0, PORT_DISABLE_OPCODE)
@@ -230,31 +230,31 @@ def main():
             print("Command returned an error or unexpected code.")
 
 
-   #time.sleep(1)
-   #print("Sending 'Port Enable' command (opcode=0x03)...")
-   #i2c_write_8bit(PDPORT_ENABLE, 0x00)
-   #i2c_write_8bit(PDPORT_ENABLE, 0x01)
+     time.sleep(1)
+     print("Sending 'Port Enable' command (opcode=0x03)...")
+     i2c_write_8bit(PDPORT_ENABLE, 0x00)
+     i2c_write_8bit(PDPORT_ENABLE, 0x01)
 
-    #time.sleep(3)
+     #time.sleep(3)
 
- #   print("Sending 'RESET' command (opcode=0x00)...") # NO RESPONSE for RESET command (0x00 is returned as response code).
- #   i2c_write_8bit(RESET_OFFSET, 0x00)
- #   time.sleep(1)
-
-
- #  print("Entering Flashing Mode Command (opcode=0x00)...")
- #  i2c_write_8bit(ENTER_FLASHING_MODE_OFFSET, 0x1)
+     #print("Sending 'RESET' command (opcode=0x00)...") # NO RESPONSE for RESET command (0x00 is returned as response code).
+     #i2c_write_8bit(RESET_OFFSET, 0x00)
+     #time.sleep(1)
 
 
- #  print("Initiating JUMP TO BOOT Command")
- #   i2c_write_8bit(JUMP_TO_BOOT_OFFSET, 0x0A)
- #   time.sleep(1)
+     #print("Entering Flashing Mode Command (opcode=0x00)...")
+     #i2c_write_8bit(ENTER_FLASHING_MODE_OFFSET, 0x1)
 
 
-    resp_code = read_response()
-    if resp_code is None:
+     #print("Initiating JUMP TO BOOT Command")
+     #i2c_write_8bit(JUMP_TO_BOOT_OFFSET, 0x0A)
+     #time.sleep(1)
+
+
+     resp_code = read_response()
+     if resp_code is None:
         print("No response received (None).")
-    else:
+     else:
         print(f"Response code for JUMP TO BOOT CMD: 0x{resp_code:02X}")
         if resp_code == SUCCESS_CODE:
             print("Command succeeded!")
@@ -262,22 +262,22 @@ def main():
             print("Command returned an error or unexpected code.")
 
 
-    time.sleep(3)
+     time.sleep(3)
 
-    print("Reading Device Mode Register")
-    device_mode_reg_val = i2c_read(DEVICE_MODE_OFFSET, 1)
-    if device_mode_reg_val:
+     print("Reading Device Mode Register")
+     device_mode_reg_val = i2c_read(DEVICE_MODE_OFFSET, 1)
+     if device_mode_reg_val:
          #device_mode_reg_val[0] contains the first byte of the response
         print(f"device_mode_reg_val: 0x{device_mode_reg_val[0]:02X}")
-    else:
+     else:
         print("Failed to read device_mode_reg_val.")
 
-    print("Reading Silicon ID")
-    silicon_id_val = i2c_read(READ_SILICON_ID, 1)
-    if silicon_id_val:
+     print("Reading Silicon ID")
+     silicon_id_val = i2c_read(READ_SILICON_ID, 1)
+     if silicon_id_val:
          #silicon_id_val[0] contains the first byte of the response
         print(f"silicon_id_val: 0x{silicon_id_val[0]:02X}")
-    else:
+     else:
         print("Failed to read silicon_id_val.")
 
 #    print("Reading Die Info") # Returns Byte 10: 0x7F, byte 11: 0x09, why not A0? (check HPIv2 (CCGx) Address: 0x0033)
@@ -291,7 +291,7 @@ def main():
 
 
     # Small delay to let the device process
-    time.sleep(0.8)
+    #time.sleep(0.8)
 
 
 
