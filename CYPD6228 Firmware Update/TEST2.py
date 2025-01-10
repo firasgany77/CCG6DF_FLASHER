@@ -3,6 +3,8 @@ import os
 import smbus2
 from intelhex import IntelHex
 
+# Comment for TEST2.py
+
 # I2C Bus / Address Configuration
 I2C_BUS = 2  # e.g., /dev/i2c-2
 I2C_SLAVE_ADDR = 0x40  # The CCG device's I2C address
