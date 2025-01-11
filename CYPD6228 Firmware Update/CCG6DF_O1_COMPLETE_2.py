@@ -25,7 +25,6 @@ SUCCESS_CODE           = 0x02     # Example "command success" code
 
 # -------------------------------------------------------------------
 # Offsets & Opcodes
-# (For demonstration; in real usage verify if HPv1 vs. HPv2 addresses)
 # -------------------------------------------------------------------
 DEVICE_MODE_OFFSET           = 0x0000
 ENTER_FLASHING_MODE_OFFSET   = 0x000A
@@ -168,7 +167,6 @@ def validate_firmware(bus):
     """
     pass
 
-
 def reset_device_startup(bus):
     """
     Resets the device at the start of the script to ensure it's in a known state.
@@ -182,6 +180,14 @@ def reset_device_startup(bus):
     import time
     time.sleep(0.5)
 
+def read_response_register_port0(bus):
+    """
+    Read the response register at RESPONSE_OFFSET_PORT0 (0x1400).
+    Returns the data read from the register.
+    """
+    print("Reading response register at RESPONSE_OFFSET_PORT0...")
+    data = i2c_read_block_16b_offset(bus, I2C_SLAVE_ADDR, RESPONSE_OFFSET_PORT0, 4)  # Example: read 4 bytes
+    return data[0]
 
 # -------------------------------------------------------------------
 # Main Firmware Update Flow
@@ -236,8 +242,22 @@ def update_firmware_ccg6df_example(hex_file_path):
         print(f"Clearing FW1 metadata row at 0x{FW1_METADATA_ROW:04X} ...")
         zero_row = [0x00] * FLASH_ROW_SIZE_BYTES
         flash_row_read_write(bus, FW1_METADATA_ROW, zero_row)
-        time.sleep(0.05)
 
+        ################################################################################################################
+        #################################### READ RESPONSE FROM WRITING ZERO BUFFER ####################################
+        resp_zero_buffer = read_response_register_port0(bus)
+        if resp_zero_buffer is None:
+            print("No response from writing zero buffer received (None).")
+        else:
+            print(f"Response code for writing zero buffer: 0x{resp_zero_buffer:02X}")
+            if resp_zero_buffer == SUCCESS_CODE:
+                print("Command succeeded!")
+            else:
+                print("Command returned an error or unexpected code.")
+        ################################################################################################################
+        ################################################################################################################
+
+        time.sleep(0.05)
         # 5. Program each row from the IntelHex file
         print(f"Parsing HEX file: {hex_file_path}")
         ih = IntelHex(hex_file_path)
@@ -245,8 +265,8 @@ def update_firmware_ccg6df_example(hex_file_path):
         start_addr = ih.minaddr()
         end_addr = ih.maxaddr()
 
-        start_addr = ih.minaddr()
-        end_addr = ih.maxaddr()
+        print(f"start_addr: {start_addr}")
+        print(f"end_addr: {end_addr}")
 
         # Enforce a maximum address limit to match device flash size (e.g., 64 KB)
         MAX_FLASH_ADDRESS = 0xFFFF  # 64 KB for CCG6DF
@@ -254,7 +274,6 @@ def update_firmware_ccg6df_example(hex_file_path):
             print(
                 f"Warning: HEX file contains addresses beyond device's flash range. Limiting to 0x{MAX_FLASH_ADDRESS:04X}.")
             end_addr = MAX_FLASH_ADDRESS
-
 
         # Ensure the jumps are aligned to increments of 0x40
         INCREMENT = 0x40  # Increment size for each row
@@ -311,7 +330,7 @@ if __name__ == "__main__":
     reset_device_startup(bus)
     bus.close()
 
-
     print("Starting firmware update for CCG6DF device (two-byte offset, i2c_rdwr for >32 bytes).")
     update_firmware_ccg6df_example(firmware_hex_path)
+
     print("Done.")
