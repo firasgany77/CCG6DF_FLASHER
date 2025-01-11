@@ -1,14 +1,4 @@
 #!/usr/bin/env python3
-"""
-Example code to update the firmware on a CCG6DF device, now using a two-byte register offset
-where the LS byte is sent before the MS byte (e.g., 0xCD first, then 0xAB for 0xABCD).
-
-It uses:
-- smbus2 for I2C transactions
-- intelhex for parsing the HEX file
-
-Constants, addresses, and partial opcodes are as provided in previous steps.
-"""
 
 import os
 import smbus2
@@ -20,7 +10,7 @@ from intelhex import IntelHex
 # -------------------------------------------------------------------
 I2C_BUS                = 2        # Example: I2C bus number
 I2C_SLAVE_ADDR         = 0x40     # The CCG6DF device's I2C address
-FLASH_ROW_SIZE_BYTES   = 128      # Flash row size for CCG6DF
+FLASH_ROW_SIZE_BYTES   = 64      # Flash row size for CCG6DF
 SUCCESS_CODE           = 0x02     # Example "command success" code
 
 # -------------------------------------------------------------------
@@ -31,7 +21,7 @@ DEVICE_MODE_OFFSET           = 0x0000
 ENTER_FLASHING_MODE_OFFSET   = 0x000A
 JUMP_TO_BOOT_OFFSET          = 0x0007
 FLASH_ROW_READ_WRITE_OFFSET  = 0x000C
-RESET_OFFSET                 = 0x0008
+RESET_OFFSET                 = 0x0800
 PDPORT_ENABLE_OFFSET         = 0x002C
 
 PORT_DISABLE_OPCODE          = 0x11
@@ -216,47 +206,6 @@ def update_firmware_ccg6df_example(hex_file_path):
         enter_flashing_mode(bus)
         time.sleep(0.05)
 
-        # 5. Clear metadata row (FW1 for example)
-        print(f"Clearing FW1 metadata row at 0x{FW1_METADATA_ROW:04X}...")
-        zero_row = [0x00] * FLASH_ROW_SIZE_BYTES
-        flash_row_read_write(bus, FW1_METADATA_ROW, zero_row)
-        time.sleep(0.05)
-
-        # 6. Parse the HEX file, program each row
-        print(f"Parsing HEX file: {hex_file_path}")
-        ih = IntelHex(hex_file_path)
-
-        start_addr = ih.minaddr()
-        end_addr   = ih.maxaddr()
-        # Round up to next row
-        end_aligned = ((end_addr + FLASH_ROW_SIZE_BYTES) // FLASH_ROW_SIZE_BYTES) * FLASH_ROW_SIZE_BYTES
-
-        print(f"Programming from 0x{start_addr:04X} to 0x{end_addr:04X} in {FLASH_ROW_SIZE_BYTES}-byte rows.")
-        for base_addr in range(start_addr, end_aligned, FLASH_ROW_SIZE_BYTES):
-            row_data = []
-            for offset in range(FLASH_ROW_SIZE_BYTES):
-                addr = base_addr + offset
-                if addr > end_addr:
-                    row_data.append(0xFF)  # filler
-                else:
-                    row_data.append(ih[addr] & 0xFF)
-
-            # The row_number typically is base_addr // FLASH_ROW_SIZE_BYTES
-            row_num = base_addr // FLASH_ROW_SIZE_BYTES
-
-            print(f"Writing row number: {row_num}, flash offset: 0x{base_addr:04X}")
-            flash_row_read_write(bus, row_num, row_data)
-            time.sleep(0.01)  # small delay
-
-        # 7. Validate firmware (placeholder)
-        print("Validating firmware (placeholder function)...")
-        validate_firmware(bus)
-        time.sleep(0.05)
-
-        # 8. Reset the device to run new firmware
-        print("Resetting device to run new firmware...")
-        reset_device(bus, 1)
-        print("Firmware update sequence complete.")
 
     finally:
         bus.close()
@@ -266,7 +215,7 @@ def update_firmware_ccg6df_example(hex_file_path):
 # Example usage if run directly
 # -------------------------------------------------------------------
 if __name__ == "__main__":
-    firmware_hex_path = "/home/firas/Documents/CYPD6228/CYPD6228-96BZXI_notebook_dualapp_usb4_3_5_1_4_0_0_1_nb.hex"
+    firmware_hex_path = "/home/firas/Documents/CYPD6228/CYPD6228-96BZXI_notebook_dualapp_usb4_228_2.hex"
     print("Starting firmware update for CCG6DF device (two-byte offset, LS byte first).")
     update_firmware_ccg6df_example(firmware_hex_path)
     print("Done.")

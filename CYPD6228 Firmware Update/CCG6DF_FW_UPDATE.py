@@ -217,6 +217,7 @@ def main():
      print("Sending 'Port-1 Disable' command (opcode=0x11)...") # responses with 0x02 (SUCCESS).
      i2c_write_8bit(PD_CONTROL_OFFSET_PORT1, PORT_DISABLE_OPCODE)
 
+
      time.sleep(1) # minimum delay is needed to catch the response after write command
      # Read the response code of Reset Event
      resp_code = read_response()
