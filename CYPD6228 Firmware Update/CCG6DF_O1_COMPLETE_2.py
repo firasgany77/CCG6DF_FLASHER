@@ -18,9 +18,9 @@ from intelhex import IntelHex
 # -------------------------------------------------------------------
 # I2C Bus / Address / Constants
 # -------------------------------------------------------------------
-I2C_BUS                = 2        # Example: I2C bus number
+I2C_BUS                = 2       # Example: I2C bus number
 I2C_SLAVE_ADDR         = 0x40     # The CCG6DF device's I2C address
-FLASH_ROW_SIZE_BYTES   = 128      # Flash row size for CCG6DF
+FLASH_ROW_SIZE_BYTES   = 64      # Flash row size for CCG6DF
 SUCCESS_CODE           = 0x02     # Example "command success" code
 
 # -------------------------------------------------------------------
@@ -31,7 +31,7 @@ DEVICE_MODE_OFFSET           = 0x0000
 ENTER_FLASHING_MODE_OFFSET   = 0x000A
 JUMP_TO_BOOT_OFFSET          = 0x0007
 FLASH_ROW_READ_WRITE_OFFSET  = 0x000C
-RESET_OFFSET                 = 0x0008
+RESET_OFFSET                 = 0x0800
 PDPORT_ENABLE_OFFSET         = 0x002C
 
 PORT_DISABLE_OPCODE          = 0x11
@@ -121,15 +121,15 @@ def reset_device(bus, reset_type=1):
 
 def flash_row_read_write(bus, row_number, data_to_write=None):
     """
-    Demonstrate a "Flash row read/write" command:
+    Flash row read/write command:
       Byte[0]: 'F'(0x46) => signature
       Byte[1]: command => (0=read, 1=write)
       Byte[2..3]: row_number (LSB, MSB)
-      If writing, append the entire row data (128 bytes).
+      If writing, append the entire row data (64 bytes).
     """
     if data_to_write is not None:
         if len(data_to_write) != FLASH_ROW_SIZE_BYTES:
-            raise ValueError("Data must match the FLASH_ROW_SIZE_BYTES.")
+            raise ValueError(f"Data must match the FLASH_ROW_SIZE_BYTES ({FLASH_ROW_SIZE_BYTES}).")
         # Compose the command buffer
         cmd_buf = [
             0x46,            # 'F'
@@ -149,8 +149,7 @@ def flash_row_read_write(bus, row_number, data_to_write=None):
             (row_number >> 8) & 0xFF
         ]
         i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, FLASH_ROW_READ_WRITE_OFFSET, cmd_buf)
-        # Next, read the data from the data memory or from the same offset if doc says so.
-        # We'll try to read 128 bytes from the same offset:
+        # Read 64 bytes of data
         return i2c_read_block_16b_offset(bus, I2C_SLAVE_ADDR, FLASH_ROW_READ_WRITE_OFFSET, FLASH_ROW_SIZE_BYTES)
 
 def disable_pd_ports(bus):
@@ -168,6 +167,20 @@ def validate_firmware(bus):
     Placeholder.
     """
     pass
+
+
+def reset_device_startup(bus):
+    """
+    Resets the device at the start of the script to ensure it's in a known state.
+    """
+    print("Resetting device...")
+    reset_command = [0x52, 0x01]  # 'R' + reset_type (1 = Device Reset)
+    i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, RESET_OFFSET, reset_command)
+    print("Device reset command sent.")
+
+    # Wait for the device to stabilize
+    import time
+    time.sleep(0.5)
 
 
 # -------------------------------------------------------------------
@@ -189,6 +202,12 @@ def update_firmware_ccg6df_example(hex_file_path):
     bus = smbus2.SMBus(I2C_BUS)
 
     try:
+        # 0. Reset device at startup
+        reset_device_startup(bus)
+        print("Reset device from update_firmware_ccg6df_ex")
+
+        # (Existing code follows...)
+
         # 1. Read device mode
         mode_before = read_device_mode(bus)
         print("Current device mode (raw):", hex(mode_before))
@@ -224,10 +243,10 @@ def update_firmware_ccg6df_example(hex_file_path):
         ih = IntelHex(hex_file_path)
 
         start_addr = ih.minaddr()
-        end_addr   = ih.maxaddr()
+        end_addr = ih.maxaddr()
 
-        print("Min address in HEX:", hex(ih.minaddr()))
-        print("Max address in HEX:", hex(ih.maxaddr()))
+        start_addr = ih.minaddr()
+        end_addr = ih.maxaddr()
 
         # Enforce a maximum address limit to match device flash size (e.g., 64 KB)
         MAX_FLASH_ADDRESS = 0xFFFF  # 64 KB for CCG6DF
@@ -236,23 +255,36 @@ def update_firmware_ccg6df_example(hex_file_path):
                 f"Warning: HEX file contains addresses beyond device's flash range. Limiting to 0x{MAX_FLASH_ADDRESS:04X}.")
             end_addr = MAX_FLASH_ADDRESS
 
-        # Round up to next multiple of FLASH_ROW_SIZE_BYTES
-        end_aligned = ((end_addr + FLASH_ROW_SIZE_BYTES) // FLASH_ROW_SIZE_BYTES) * FLASH_ROW_SIZE_BYTES
 
-        print(f"Programming from 0x{start_addr:04X} to 0x{end_addr:04X} in {FLASH_ROW_SIZE_BYTES}-byte rows.")
-        for base_addr in range(start_addr, end_aligned, FLASH_ROW_SIZE_BYTES):
+        # Ensure the jumps are aligned to increments of 0x40
+        INCREMENT = 0x40  # Increment size for each row
+        print(f"Programming from 0x{start_addr:04X} to 0x{end_addr:04X} in increments of 0x{INCREMENT:02X}.")
+
+        for base_addr in range(start_addr, end_addr + 1, INCREMENT):
             row_data = []
-            for offset in range(FLASH_ROW_SIZE_BYTES):
+            is_empty = True  # Flag to detect empty rows
+
+            for offset in range(INCREMENT):
                 addr = base_addr + offset
                 if addr > end_addr:
-                    row_data.append(0xFF)  # fill up
+                    row_data.append(0xFF)  # Fill with padding if beyond end address
                 else:
-                    row_data.append(ih[addr] & 0xFF)
+                    value = ih[addr] & 0xFF
+                    row_data.append(value)
+                    if value != 0x00:  # Check if row has meaningful data
+                        is_empty = False
 
-            row_num = base_addr // FLASH_ROW_SIZE_BYTES
-            print(f"Writing row #{row_num}, flash offset: 0x{base_addr:04X}")
+            if is_empty:
+                # Skip flashing this row since it's empty
+                print(f"Skipping empty row at flash offset: 0x{base_addr:04X}")
+                continue
+
+            # Write the row to flash
+            row_num = base_addr // INCREMENT
+            print(f"Writing row #{row_num}, flash offset: 0x{base_addr:04X}, data: {row_data[:8]}...")
+
             flash_row_read_write(bus, row_num, row_data)
-            time.sleep(0.01)
+            time.sleep(0.01)  # Minimal delay per row
 
         # 6. Validate firmware if needed
         print("Validating firmware (placeholder)...")
@@ -272,7 +304,14 @@ def update_firmware_ccg6df_example(hex_file_path):
 # Example usage if run directly
 # -------------------------------------------------------------------
 if __name__ == "__main__":
-    firmware_hex_path = "/home/firas/Documents/CYPD6228/NEW.hex"
+    firmware_hex_path = "/home/firas/Documents/CYPD6228/CYPD6228-96BZXI_notebook_dualapp_usb4_228_2.hex"
+
+    print("Resetting device at startup...")
+    bus = smbus2.SMBus(I2C_BUS)
+    reset_device_startup(bus)
+    bus.close()
+
+
     print("Starting firmware update for CCG6DF device (two-byte offset, i2c_rdwr for >32 bytes).")
     update_firmware_ccg6df_example(firmware_hex_path)
     print("Done.")

@@ -56,12 +56,9 @@ ENTER_FLASHING_MODE_OFFSET = 0x000A
 READ_SILICON_ID = 0x0002 # Read Returns A0, Address: 0x0002 , Silicon Revision Major.Minor field 1.1 means A0 silicon. Likewise, 1.2 is A1 silicon.
 READ_DIE_INFO = 0x0033 # Address 0x0033
 JUMP_TO_BOOT_OFFSET = 0x0007 # read 4.2.3.6.2 HPIv2
-
 FLASH_ROW_READ_WRITE = 0x000C
 FW1_METADATA_ROW = 0xFF80  # Address of FW1 Metadata Row
 TBOOTWAIT_OFFSET = 0x14  # Offset for tBootWait parameter in the metadata
-
-
 PDPORT_ENABLE = 0x002C
 # Commands like DEVICE RESET or JUMP_TO_BOOT should only be initiated after the SUCCESS response for the
 # PDPORT_ENABLE command has been received.
