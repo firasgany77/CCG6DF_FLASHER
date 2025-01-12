@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 import os
 import smbus2
 from intelhex import IntelHex
@@ -9,7 +8,7 @@ from intelhex import IntelHex
 # I2C Bus / Address / Constants
 # -------------------------------------------------------------------
 I2C_BUS                = 2        # Example: I2C bus number
-I2C_SLAVE_ADDR         = 0x40     # The CCG6DF device's I2C address
+I2C_SLAVE_ADDR         = 0x40    # The CCG6DF device's I2C address
 FLASH_ROW_SIZE_BYTES   = 64      # Flash row size for CCG6DF
 SUCCESS_CODE           = 0x02     # Example "command success" code
 
@@ -21,7 +20,7 @@ DEVICE_MODE_OFFSET           = 0x0000
 ENTER_FLASHING_MODE_OFFSET   = 0x000A
 JUMP_TO_BOOT_OFFSET          = 0x0007
 FLASH_ROW_READ_WRITE_OFFSET  = 0x000C
-RESET_OFFSET                 = 0x0800
+RESET_OFFSET                 = 0x0008
 PDPORT_ENABLE_OFFSET         = 0x002C
 
 PORT_DISABLE_OPCODE          = 0x11
@@ -195,16 +194,22 @@ def update_firmware_ccg6df_example(hex_file_path):
 
         # In real code, wait for a "Reset Complete" event or poll. We'll do a short sleep:
         import time
-        time.sleep(0.2)
+        time.sleep(1)
 
         # 3. Now in bootloader mode?
         mode_boot = read_device_mode(bus)
         print("Device mode after jump:", hex(mode_boot))
 
+        time.sleep(10)
+
         # 4. Enter flashing mode
         print("Entering flashing mode...")
         enter_flashing_mode(bus)
-        time.sleep(0.05)
+        time.sleep(1)
+
+        # 3. Now in bootloader mode?
+        mode_boot = read_device_mode(bus)
+        print("Device mode after flashing mode:", hex(mode_boot))
 
 
     finally:
