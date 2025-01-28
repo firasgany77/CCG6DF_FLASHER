@@ -12,11 +12,15 @@ from intelhex import IntelHex
 I2C_BUS                = 2       # Example: I2C bus number
 
 # NEW: Define the lower and upper flashing limits for partial firmware updates
-LOWER_FLASHING_LIMIT   = 0x0A00  # e.g., row 41
-UPPER_FLASHING_LIMIT   = 0x2840  # e.g., row 162
+LOWER_FLASHING_LIMIT   = 0x0A00  # e.g., row 41 (FW1 Start)
+UPPER_FLASHING_LIMIT   = 0x2840  # e.g., row 162 (FW1 END)
 
 FLASH_ROW_SIZE_BYTES   = 64      # Flash row size for CCG6DF
 SUCCESS_CODE           = 0x02    # Example "command success" code
+
+# NEW: Define two constants for data memory zero-filling
+DATA_MEM_LOWER_LIMIT   = 0x3000  # Example start of data memory region
+DATA_MEM_UPPER_LIMIT   = 0x3100  # Example end of data memory region
 
 # -------------------------------------------------------------------
 # Offsets & Opcodes
@@ -285,35 +289,38 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
             print(f"ERROR: Device mode 0x{post_boot_device_mode:02X} is not Bootloader. Aborting.")
             return
 
-        # 4.Initiate flashing mode entry using ENTER_FLASHING_MODE register.
+        # 4. Initiate flashing mode entry using ENTER_FLASHING_MODE register.
         print("Entering flashing mode...")
         enter_flashing_mode(bus, ccg_slave_address)
         time.sleep(0.5)  # Increased delay
 
         # 5. Clear the firmware metadata in flash memory
+        # 5.a Fill data memory with zeroes
+        # NEW: Fill data memory from DATA_MEM_LOWER_LIMIT to DATA_MEM_UPPER_LIMIT
+        print(f"Filling data memory with zeroes from 0x{DATA_MEM_LOWER_LIMIT:04X} to 0x{DATA_MEM_UPPER_LIMIT:04X} ...")
+        for base_addr in range(DATA_MEM_LOWER_LIMIT, DATA_MEM_UPPER_LIMIT + 1, FLASH_ROW_SIZE_BYTES):
+            zero_row = [0x00] * FLASH_ROW_SIZE_BYTES
+            row_num = base_addr // FLASH_ROW_SIZE_BYTES
+
+            print(f"  Writing zero row #{row_num}, offset 0x{base_addr:04X}")
+            flash_row_read_write(bus, row_num, zero_row, ccg_slave_address)
+            time.sleep(0.01)
+
+            if not check_for_success_response(bus, ccg_slave_address, f"Write zero row #{row_num}"):
+                print("ERROR: Writing zero row failed. Aborting update.")
+                return
+
         if pre_boot_device_mode == 0x86:
             # 0x86 => FW2
             print(f"Clearing FW2 metadata row at 0x{FW2_METADATA_ROW:04X} ...")
             zero_row = [0x00] * FLASH_ROW_SIZE_BYTES
             flash_row_read_write(bus, FW2_METADATA_ROW, zero_row, ccg_slave_address)
-            #time.sleep(0.5)
-            #if not check_for_success_response(bus, ccg_slave_address, "Clearing FW Metadata"):
-            #    print("ERROR: Clearing FW Metadata did not return success. Aborting update.")
-            #    return
-            #else:
-            #    print("FW Metadata cleared successfully. SUCCESS Response Received")
 
-        #elif pre_boot_device_mode == 0x85:
+        # elif pre_boot_device_mode == 0x85:
             # 0x85 => FW1
-            #print(f"Clearing FW1 metadata row at 0x{FW1_METADATA_ROW:04X} ...")
-            #zero_row = [0x00] * FLASH_ROW_SIZE_BYTES
-            #flash_row_read_write(bus, FW1_METADATA_ROW + 1, zero_row, ccg_slave_address)
-            #time.sleep(2)
-            #if not check_for_success_response(bus, ccg_slave_address, "Clearing FW Metadata"):
-            #    print("ERROR: Clearing FW Metadata did not return success. Aborting update.")
-            #    return
-            #else:
-            #    print("FW Metadata cleared successfully. SUCCESS Response Received")
+            # print(f"Clearing FW1 metadata row at 0x{FW1_METADATA_ROW:04X} ...")
+            # zero_row = [0x00] * FLASH_ROW_SIZE_BYTES
+            # flash_row_read_write(bus, FW1_METADATA_ROW + 1, zero_row, ccg_slave_address)
 
         else:
             print(f"ERROR: pre_boot_device_mode = 0x{pre_boot_device_mode:02X} is not FW1 or FW2, cannot clear metadata.")
@@ -338,7 +345,7 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
                 f"Warning: HEX file contains addresses beyond device's flash range. Limiting to 0x{MAX_FLASH_ADDRESS:04X}.")
             end_addr = MAX_FLASH_ADDRESS
 
-        # NEW: Now constrain further to LOWER_FLASHING_LIMIT / UPPER_FLASHING_LIMIT
+        # Now constrain further to LOWER_FLASHING_LIMIT / UPPER_FLASHING_LIMIT
         if start_addr < LOWER_FLASHING_LIMIT:
             print(f"Forcing start_addr up to 0x{LOWER_FLASHING_LIMIT:04X}")
             start_addr = LOWER_FLASHING_LIMIT
@@ -419,7 +426,6 @@ if __name__ == "__main__":
         except Exception as e:
             # If an uncaught error/exception occurs, we print and move on to the next address
             print(f"Error with address 0x{addr:02X}: {e}. Trying next address...\n")
-
             time.sleep(0.2)
 
     print("Done.")
