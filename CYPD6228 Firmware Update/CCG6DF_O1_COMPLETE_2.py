@@ -12,6 +12,7 @@ All addresses, constants, and partial opcodes are from the original request.
 
 import os
 import smbus2
+import time
 from smbus2 import i2c_msg
 from intelhex import IntelHex
 
@@ -41,6 +42,34 @@ RESPONSE_OFFSET_PORT1        = 0x2400
 
 FW1_METADATA_ROW             = 0xFF80
 FW2_METADATA_ROW             = 0xFF00
+
+
+"""
+HPIv1 Method:
+
+1. Check the DEVICE_MODE register.
+2. If CCG device is in FIRMWARE mode:
+    a. Disable the PD port using the Port Disable command 
+    b. Wait for SUCCESS response 
+    c. Initiate a JUMP_TO_BOOT command 
+    d. Wait for a RESET_COMPLETE event (or ~10 ms delay). 
+3. Read DEVICE_MODE register and verify that device is in bootloader mode. 
+4. Initiate flashing mode entry using ENTER_FLASHING_MODE register.
+5. Clear the firmware metadata in flash memory
+    a. Fill the data memory with zeros.
+    b. Use the FLASH_ROW_READ_WRITE register to trigger a write of the “zero” buffer into the metadata flash row.
+    c. Wait for a SUCCESS response.
+6. For each flash row to be updated:
+    a. Copy the data into the data memory.
+    b. Use the FLASH_ROW_READ_WRITE register to trigger writing of data to the desired flash row.
+    c. Wait for a SUCCESS response.
+    d. If read-verify is required:
+   	 i. Use the FLASH_ROW_READ_WRITE register to trigger reading of data from the desired flash row.
+   	 ii. Wait for a FLASH_DATA_AVAILABLE response from CCG.
+   	 iii. Read the data from the data memory and verify.
+7. Use VALIDATE_FW register to request the new firmware to be validated.
+Use the RESET register to go through a fresh start-up cycle which will load the new firmware binary.
+"""
 
 # -------------------------------------------------------------------
 # Helper functions using i2c_rdwr (no 32-byte limit)
@@ -233,55 +262,76 @@ def update_firmware_ccg6df_example(hex_file_path):
     bus = smbus2.SMBus(I2C_BUS)
 
     try:
-        # 0. Reset device at startup
-        reset_device_startup(bus)
-        print("Reset device from update_firmware_ccg6df_ex")
 
-        # (Existing code follows...)
+        # 1. Read DEVICE_MODE Register:
+        # if b1-b0 in current_device_mode are 10 then we are in FW2 and register value will be = 0x86 = 1000 0110
+        # if b1-b0 in current_device_mode are 01 then we are in FW1 and register value will be = 0x85 = 1000 0101
+        # if b1-b0 in current_device_mode are 00 then we are in BTL and register value will be = 0x84 = 1000 0100
+        current_device_mode = read_device_mode(bus)
 
-        # 1. Read device mode
-        mode_before = read_device_mode(bus)
-        print("Current device mode (raw):", hex(mode_before))
+        if current_device_mode == 0x85:
+            print("Current device mode: 0x85 => FW1")
+        elif current_device_mode == 0x86:
+            print("Current device mode: 0x86 => FW2")
+        else:
+            print(f"ERROR: Device mode 0x{current_device_mode:02X} is not FW1 or FW2. Aborting.")
+            return
 
-        # If in FW mode => disable PD ports => jump to boot
+        # 2. If CCG device is in FIRMWARE Mode:
+        # 2a. Disable THE PD port using the Port-Disable Command
         print("Disabling PD ports...")
         disable_pd_ports(bus)
 
-        print("Jumping to bootloader mode...")
+        time.sleep(0.2)
+
+        # 2.b: Wait for "SUCCESS" response:
+        if not check_for_success_response(bus, "Disable PD ports"):
+            print("ERROR: Disabling PD ports did not return success. Aborting update.")
+            return
+        else:
+            print("PD ports disabled successfully. SUCCESS Response Received")
+
+        # 2.c Initiate JUMP_TO_BOOT command
         jump_to_boot(bus)
 
+        #wait for a RESET_COMPLETE Event (or ~10ms Delay)
+        time.sleep(0.2)
+
+        current_device_mode = read_device_mode(bus)
+
+        if current_device_mode == 0x84:
+            print("Current device mode: 0x84 => Bootloader")
+        else:
+            print(f"ERROR: Device mode 0x{current_device_mode:02X} is not Bootloader. Aborting.")
+            return
+
+        #reset_device_startup(bus)
+        #print("Reset device from update_firmware_ccg6df_ex")
+
+
+
+        #print("Jumping to bootloader mode...")
+
+
         # Wait/poll for boot or "Reset Complete" event in real usage
-        import time
+
         time.sleep(0.2)
 
         # 2. Check if in boot mode now
-        mode_boot = read_device_mode(bus)
-        print("Device mode after jump:", hex(mode_boot))
+        #mode_boot = read_device_mode(bus)
+        #print("Device mode after jump:", hex(mode_boot))
 
         # 3. Enter flashing mode
-        print("Entering flashing mode...")
-        enter_flashing_mode(bus)
+        #print("Entering flashing mode...")
+        #enter_flashing_mode(bus)
         time.sleep(0.1)
 
         # 4. Clear FW1 metadata row
-        print(f"Clearing FW1 metadata row at 0x{FW1_METADATA_ROW:04X} ...")
-        zero_row = [0x00] * FLASH_ROW_SIZE_BYTES
-        flash_row_read_write(bus, FW2_METADATA_ROW, zero_row)
+        #print(f"Clearing FW1 metadata row at 0x{FW1_METADATA_ROW:04X} ...")
+        #zero_row = [0x00] * FLASH_ROW_SIZE_BYTES
+        #flash_row_read_write(bus, FW2_METADATA_ROW, zero_row)
 
-        ################################################################################################################
-        #################################### READ RESPONSE FROM WRITING ZERO BUFFER ####################################
-        #resp_zero_buffer = read_response_register_port0(bus)
-        #if resp_zero_buffer is None:
-        #    print("No response from writing zero buffer received (None).")
-        #else:
-        #    print(f"Response code for writing zero buffer: 0x{resp_zero_buffer:02X}")
-        #    if resp_zero_buffer == SUCCESS_CODE:
-        #        print("Command succeeded!")
-        #    else:
-        #        print("Command returned an error or unexpected code.")
-        ################################################################################################################
-        ################################################################################################################
-
+        """
         time.sleep(0.1)
         # 5. Program each row from the IntelHex file
         print(f"Parsing HEX file: {hex_file_path}")
@@ -344,7 +394,7 @@ def update_firmware_ccg6df_example(hex_file_path):
         print("Resetting device to run new firmware...")
         reset_device(bus, 1)
         print("Firmware update sequence complete.")
-
+    """
     finally:
         bus.close()
 
