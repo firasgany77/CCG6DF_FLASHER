@@ -30,7 +30,7 @@ DEVICE_MODE_OFFSET           = 0x0000
 ENTER_FLASHING_MODE_OFFSET   = 0x000A
 JUMP_TO_BOOT_OFFSET          = 0x0007
 FLASH_ROW_READ_WRITE_OFFSET  = 0x000C
-RESET_OFFSET                 = 0x0800
+RESET_OFFSET                 = 0x0800 # 0x0800 the one that works
 PDPORT_ENABLE_OFFSET         = 0x002C
 
 PORT_DISABLE_OPCODE          = 0x11
@@ -157,8 +157,7 @@ def disable_pd_ports(bus):
     Check your device doc for actual procedure to disable PD ports.
     """
     i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, PD_CONTROL_OFFSET_PORT0, [PORT_DISABLE_OPCODE])
-    # Potentially do the same for port1 if needed:
-    # i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, PD_CONTROL_OFFSET_PORT1, [PORT_DISABLE_OPCODE])
+    i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, PD_CONTROL_OFFSET_PORT1, [PORT_DISABLE_OPCODE])
 
 def validate_firmware(bus):
     """
@@ -188,6 +187,32 @@ def read_response_register_port0(bus):
     print("Reading response register at RESPONSE_OFFSET_PORT0...")
     data = i2c_read_block_16b_offset(bus, I2C_SLAVE_ADDR, RESPONSE_OFFSET_PORT0, 4)  # Example: read 4 bytes
     return data[0]
+
+def check_for_success_response(bus, operation_description):
+    """
+    Reads the response register at RESPONSE_OFFSET_PORT0.
+    If the response equals SUCCESS_CODE, prints success;
+    otherwise, prints an error.
+
+    :param bus: The smbus2.SMBus instance
+    :param operation_description: String describing the operation we are verifying
+    :return: True if success, False otherwise
+    """
+    print(f"Checking response for operation: {operation_description}")
+    response = i2c_read_block_16b_offset(bus, I2C_SLAVE_ADDR, RESPONSE_OFFSET_PORT0, 1)
+    if not response:
+        print("ERROR: No data read from response register.")
+        return False
+
+    resp_val = response[0]
+    print(f"Response register value: 0x{resp_val:02X}")
+
+    if resp_val == SUCCESS_CODE:
+        print(f"Operation '{operation_description}' succeeded (0x{resp_val:02X}).")
+        return True
+    else:
+        print(f"Operation '{operation_description}' failed or returned unexpected code (0x{resp_val:02X}).")
+        return False
 
 # -------------------------------------------------------------------
 # Main Firmware Update Flow
@@ -236,28 +261,28 @@ def update_firmware_ccg6df_example(hex_file_path):
         # 3. Enter flashing mode
         print("Entering flashing mode...")
         enter_flashing_mode(bus)
-        time.sleep(0.05)
+        time.sleep(0.1)
 
         # 4. Clear FW1 metadata row
         print(f"Clearing FW1 metadata row at 0x{FW1_METADATA_ROW:04X} ...")
         zero_row = [0x00] * FLASH_ROW_SIZE_BYTES
-        flash_row_read_write(bus, FW1_METADATA_ROW, zero_row)
+        flash_row_read_write(bus, FW2_METADATA_ROW, zero_row)
 
         ################################################################################################################
         #################################### READ RESPONSE FROM WRITING ZERO BUFFER ####################################
-        resp_zero_buffer = read_response_register_port0(bus)
-        if resp_zero_buffer is None:
-            print("No response from writing zero buffer received (None).")
-        else:
-            print(f"Response code for writing zero buffer: 0x{resp_zero_buffer:02X}")
-            if resp_zero_buffer == SUCCESS_CODE:
-                print("Command succeeded!")
-            else:
-                print("Command returned an error or unexpected code.")
+        #resp_zero_buffer = read_response_register_port0(bus)
+        #if resp_zero_buffer is None:
+        #    print("No response from writing zero buffer received (None).")
+        #else:
+        #    print(f"Response code for writing zero buffer: 0x{resp_zero_buffer:02X}")
+        #    if resp_zero_buffer == SUCCESS_CODE:
+        #        print("Command succeeded!")
+        #    else:
+        #        print("Command returned an error or unexpected code.")
         ################################################################################################################
         ################################################################################################################
 
-        time.sleep(0.05)
+        time.sleep(0.1)
         # 5. Program each row from the IntelHex file
         print(f"Parsing HEX file: {hex_file_path}")
         ih = IntelHex(hex_file_path)
@@ -304,11 +329,16 @@ def update_firmware_ccg6df_example(hex_file_path):
 
             flash_row_read_write(bus, row_num, row_data)
             time.sleep(0.01)  # Minimal delay per row
+            # Step 5a: Wait for "SUCCESS" response after each row write
+            if not check_for_success_response(bus, f"write row #{row_num}"):
+                print("Aborting due to error writing flash row.")
+                return
+
 
         # 6. Validate firmware if needed
         print("Validating firmware (placeholder)...")
         validate_firmware(bus)
-        time.sleep(0.05)
+        time.sleep(0.1)
 
         # 7. Reset to run new firmware
         print("Resetting device to run new firmware...")
