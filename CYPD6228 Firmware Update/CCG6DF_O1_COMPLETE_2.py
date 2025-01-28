@@ -20,9 +20,14 @@ from intelhex import IntelHex
 # I2C Bus / Address / Constants
 # -------------------------------------------------------------------
 I2C_BUS                = 2       # Example: I2C bus number
-I2C_SLAVE_ADDR         = 0x40    # The CCG6DF device's I2C address
+#I2C_SLAVE_ADDR         = 0x42    # The CCG6DF device's I2C address
+
+# if SWD Clock IO's state is HIGH Slave Address = 0x42
+# if SWD Clock IO's state is LOW, Slave Address = 0x40
+# if SWD Clock IO is floating, Slave Address = 0x08
+
 FLASH_ROW_SIZE_BYTES   = 64      # Flash row size for CCG6DF
-SUCCESS_CODE           = 0x02     # Example "command success" code
+SUCCESS_CODE           = 0x02    # Example "command success" code
 
 # -------------------------------------------------------------------
 # Offsets & Opcodes
@@ -246,7 +251,7 @@ def check_for_success_response(bus, operation_description):
 # -------------------------------------------------------------------
 # Main Firmware Update Flow
 # -------------------------------------------------------------------
-def update_firmware_ccg6df_example(hex_file_path):
+def update_firmware_ccg6df_example(hex_file_path, slave_address=None):
     """
     Example:
       1. Check device mode; if in FW mode => disable PD ports, jump to boot
@@ -258,11 +263,14 @@ def update_firmware_ccg6df_example(hex_file_path):
 
     Using i2c_rdwr to allow writes > 32 bytes in a single transaction.
     """
+    global I2C_SLAVE_ADDR
+    if slave_address is not None:
+        I2C_SLAVE_ADDR = slave_address
+
     print("Opening I2C bus:", I2C_BUS, "Device address:", hex(I2C_SLAVE_ADDR))
     bus = smbus2.SMBus(I2C_BUS)
 
     try:
-
         # 1. Read DEVICE_MODE Register:
         # if b1-b0 in current_device_mode are 10 then we are in FW2 and register value will be = 0x86 = 1000 0110
         # if b1-b0 in current_device_mode are 01 then we are in FW1 and register value will be = 0x85 = 1000 0101
@@ -305,8 +313,10 @@ def update_firmware_ccg6df_example(hex_file_path):
             print(f"ERROR: Device mode 0x{current_device_mode:02X} is not Bootloader. Aborting.")
             return
 
-        #reset_device_startup(bus)
-        #print("Reset device from update_firmware_ccg6df_ex")
+        #once entered bootloader - OS Restart doesn't help get out of it.
+
+       # reset_device_startup(bus)
+       # print("Reset device from update_firmware_ccg6df_ex")
 
 
 
@@ -405,12 +415,30 @@ def update_firmware_ccg6df_example(hex_file_path):
 if __name__ == "__main__":
     firmware_hex_path = "/home/firas/Documents/CYPD6228/CYPD6228-96BZXI_notebook_dualapp_usb4_228_2.hex"
 
-    print("Resetting device at startup...")
-    bus = smbus2.SMBus(I2C_BUS)
-    reset_device_startup(bus)
-    bus.close()
+    # We first do the usual device reset at startup:
+    #print("Resetting device at startup...")
+    #bus = smbus2.SMBus(I2C_BUS)
+    #reset_device_startup(bus)
+    #bus.close()
 
-    print("Starting firmware update for CCG6DF device (two-byte offset, i2c_rdwr for >32 bytes).")
-    update_firmware_ccg6df_example(firmware_hex_path)
+    # We'll try address 0x40 first, then 0x42 if 0x40 fails.
+    possible_addresses = [0x40, 0x42]
+
+    for addr in possible_addresses:
+        print(f"\nAttempting firmware update for CCG6DF at address 0x{addr:02X}...")
+        try:
+            # Call our function *with* the chosen address:
+            update_firmware_ccg6df_example(firmware_hex_path, slave_address=addr)
+
+            # If we got this far, let's assume success or normal completion:
+            print("Firmware update attempt completed (check logs for success/failure).")
+            # If you wish to break on success, you can check some success condition or just break:
+            break
+
+        except Exception as e:
+            # If an uncaught error/exception occurs, we print and move on to the next address
+            print(f"Error with address 0x{addr:02X}: {e}. Trying next address...\n")
+
+            time.sleep(0.2)
 
     print("Done.")
