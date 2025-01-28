@@ -19,8 +19,9 @@ FLASH_ROW_SIZE_BYTES   = 64      # Flash row size for CCG6DF
 SUCCESS_CODE           = 0x02    # Example "command success" code
 
 # NEW: Define two constants for data memory zero-filling
-DATA_MEM_LOWER_LIMIT   = 0x3000  # Example start of data memory region
-DATA_MEM_UPPER_LIMIT   = 0x3100  # Example end of data memory region
+# 0x0500 - 0xFEC0 covers FW1-FW2 Memory data, including Vectors and Startup-Code, Configuration Table.
+DATA_MEM_LOWER_LIMIT   = 0x0500  # Example start of data memory region
+DATA_MEM_UPPER_LIMIT   = 0xFEC0  # Example end of data memory region
 
 # -------------------------------------------------------------------
 # Offsets & Opcodes
@@ -304,12 +305,13 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
 
             print(f"  Writing zero row #{row_num}, offset 0x{base_addr:04X}")
             flash_row_read_write(bus, row_num, zero_row, ccg_slave_address)
-            time.sleep(0.01)
+            time.sleep(0.5)
 
             if not check_for_success_response(bus, ccg_slave_address, f"Write zero row #{row_num}"):
                 print("ERROR: Writing zero row failed. Aborting update.")
                 return
 
+        # 5.b Use the FLASH_ROW_READ_WRITE register to trigger a write of the “zero” buffer into the metadata flash row.
         if pre_boot_device_mode == 0x86:
             # 0x86 => FW2
             print(f"Clearing FW2 metadata row at 0x{FW2_METADATA_ROW:04X} ...")
