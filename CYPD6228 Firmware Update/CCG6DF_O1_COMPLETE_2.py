@@ -1,14 +1,4 @@
 #!/usr/bin/env python3
-"""
-Example code to update the firmware on a CCG6DF device, using a two-byte register offset
-(LS byte first, MS byte second) and i2c_rdwr to handle writes bigger than 32 bytes.
-
-It uses:
-- smbus2 for I2C transactions
-- intelhex for parsing the HEX file
-
-All addresses, constants, and partial opcodes are from the original request.
-"""
 
 import os
 import smbus2
@@ -45,8 +35,8 @@ PD_CONTROL_OFFSET_PORT1      = 0x2006
 RESPONSE_OFFSET_PORT0        = 0x1400
 RESPONSE_OFFSET_PORT1        = 0x2400
 
-FW1_METADATA_ROW             = 0xFF80
-FW2_METADATA_ROW             = 0xFF00
+FW1_METADATA_ROW             = 0xFF80 # Row 1023 in Hex File
+FW2_METADATA_ROW             = 0xFF00 # Row 1021 in Hex File
 
 
 """
@@ -79,7 +69,7 @@ Use the RESET register to go through a fresh start-up cycle which will load the 
 # -------------------------------------------------------------------
 # Helper functions using i2c_rdwr (no 32-byte limit)
 # -------------------------------------------------------------------
-def i2c_write_block_16b_offset(bus, dev_addr, register_offset_16b, data_bytes):
+def i2c_write_block_16b_offset(bus, ccg_slave_address, register_offset_16b, data_bytes):
     """
     Write `data_bytes` to the 16-bit register offset in `register_offset_16b`.
     For offset 0xABCD, we send [0xCD, 0xAB] as the first two bytes (LS byte first).
@@ -91,11 +81,11 @@ def i2c_write_block_16b_offset(bus, dev_addr, register_offset_16b, data_bytes):
     ms_byte = (register_offset_16b >> 8) & 0xFF
 
     outbuf = [ls_byte, ms_byte] + list(data_bytes)
-    write_msg = i2c_msg.write(dev_addr, outbuf)
+    write_msg = i2c_msg.write(ccg_slave_address, outbuf)
     bus.i2c_rdwr(write_msg)
 
 
-def i2c_read_block_16b_offset(bus, dev_addr, register_offset_16b, num_bytes):
+def i2c_read_block_16b_offset(bus, ccg_slave_address, register_offset_16b, num_bytes):
     """
     Read `num_bytes` from the 16-bit register offset in `register_offset_16b`.
     We do:
@@ -109,9 +99,9 @@ def i2c_read_block_16b_offset(bus, dev_addr, register_offset_16b, num_bytes):
     ms_byte = (register_offset_16b >> 8) & 0xFF
 
     # First message: write offset
-    write_msg = i2c_msg.write(dev_addr, [ls_byte, ms_byte])
+    write_msg = i2c_msg.write(ccg_slave_address, [ls_byte, ms_byte])
     # Second message: read data
-    read_msg = i2c_msg.read(dev_addr, num_bytes)
+    read_msg = i2c_msg.read(ccg_slave_address, num_bytes)
 
     bus.i2c_rdwr(write_msg, read_msg)
     return list(read_msg)
@@ -120,29 +110,29 @@ def i2c_read_block_16b_offset(bus, dev_addr, register_offset_16b, num_bytes):
 # -------------------------------------------------------------------
 # Device-Specific Commands
 # -------------------------------------------------------------------
-def read_device_mode(bus):
+def read_device_mode(bus, ccg_slave_address):
     """
     Example: read 1 byte from DEVICE_MODE_OFFSET (0x0000).
     Return the raw byte, which encodes the current device mode.
     """
-    data = i2c_read_block_16b_offset(bus, I2C_SLAVE_ADDR, DEVICE_MODE_OFFSET, 1)
+    data = i2c_read_block_16b_offset(bus, ccg_slave_address, DEVICE_MODE_OFFSET, 1)
     return data[0]
 
-def enter_flashing_mode(bus):
+def enter_flashing_mode(bus, ccg_slave_address):
     """
     Write signature 'P' (0x50) to ENTER_FLASHING_MODE_OFFSET (0x000A).
     """
     signature = 0x50  # 'P'
-    i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, ENTER_FLASHING_MODE_OFFSET, [signature])
+    i2c_write_block_16b_offset(bus, ccg_slave_address, ENTER_FLASHING_MODE_OFFSET, [signature])
 
-def jump_to_boot(bus):
+def jump_to_boot(bus, ccg_slave_address):
     """
     Write signature 'J' (0x4A) to JUMP_TO_BOOT_OFFSET (0x0007).
     """
     signature = 0x4A  # 'J'
-    i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, JUMP_TO_BOOT_OFFSET, [signature])
+    i2c_write_block_16b_offset(bus, ccg_slave_address, JUMP_TO_BOOT_OFFSET, [signature])
 
-def reset_device(bus, reset_type=1):
+def reset_device(bus, reset_type=1, ccg_slave_address=None):
     """
     Write:
       Byte[0] = 'R' => 0x52
@@ -150,9 +140,9 @@ def reset_device(bus, reset_type=1):
     to RESET_OFFSET (0x0008).
     """
     signature = 0x52  # 'R'
-    i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, RESET_OFFSET, [signature, reset_type & 0xFF])
+    i2c_write_block_16b_offset(bus, ccg_slave_address, RESET_OFFSET, [signature, reset_type & 0xFF])
 
-def flash_row_read_write(bus, row_number, data_to_write=None):
+def flash_row_read_write(bus, row_number, data_to_write=None, ccg_slave_address=None):
     """
     Flash row read/write command:
       Byte[0]: 'F'(0x46) => signature
@@ -171,7 +161,7 @@ def flash_row_read_write(bus, row_number, data_to_write=None):
             (row_number >> 8) & 0xFF
         ] + list(data_to_write)
 
-        i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, FLASH_ROW_READ_WRITE_OFFSET, cmd_buf)
+        i2c_write_block_16b_offset(bus, ccg_slave_address, FLASH_ROW_READ_WRITE_OFFSET, cmd_buf)
 
     else:
         # Read
@@ -181,17 +171,17 @@ def flash_row_read_write(bus, row_number, data_to_write=None):
             row_number & 0xFF,
             (row_number >> 8) & 0xFF
         ]
-        i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, FLASH_ROW_READ_WRITE_OFFSET, cmd_buf)
+        i2c_write_block_16b_offset(bus, ccg_slave_address, FLASH_ROW_READ_WRITE_OFFSET, cmd_buf)
         # Read 64 bytes of data
-        return i2c_read_block_16b_offset(bus, I2C_SLAVE_ADDR, FLASH_ROW_READ_WRITE_OFFSET, FLASH_ROW_SIZE_BYTES)
+        return i2c_read_block_16b_offset(bus, ccg_slave_address, FLASH_ROW_READ_WRITE_OFFSET, FLASH_ROW_SIZE_BYTES)
 
-def disable_pd_ports(bus):
+def disable_pd_ports(bus, ccg_slave_address):
     """
     Example: Write PORT_DISABLE_OPCODE (0x11) to PD_CONTROL_OFFSET_PORT0 (0x1006).
     Check your device doc for actual procedure to disable PD ports.
     """
-    i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, PD_CONTROL_OFFSET_PORT0, [PORT_DISABLE_OPCODE])
-    i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, PD_CONTROL_OFFSET_PORT1, [PORT_DISABLE_OPCODE])
+    i2c_write_block_16b_offset(bus, ccg_slave_address, PD_CONTROL_OFFSET_PORT0, [PORT_DISABLE_OPCODE])
+    i2c_write_block_16b_offset(bus, ccg_slave_address, PD_CONTROL_OFFSET_PORT1, [PORT_DISABLE_OPCODE])
 
 def validate_firmware(bus):
     """
@@ -200,40 +190,41 @@ def validate_firmware(bus):
     """
     pass
 
-def reset_device_startup(bus):
+def reset_device_startup(bus, ccg_slave_address):
     """
     Resets the device at the start of the script to ensure it's in a known state.
     """
     print("Resetting device...")
     reset_command = [0x52, 0x01]  # 'R' + reset_type (1 = Device Reset)
-    i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, RESET_OFFSET, reset_command)
+    i2c_write_block_16b_offset(bus, ccg_slave_address, RESET_OFFSET, reset_command)
     print("Device reset command sent.")
 
     # Wait for the device to stabilize
     import time
     time.sleep(0.5)
 
-def read_response_register_port0(bus):
+def read_response_register_port0(bus, ccg_slave_address):
     """
     Read the response register at RESPONSE_OFFSET_PORT0 (0x1400).
     Returns the data read from the register.
     """
     print("Reading response register at RESPONSE_OFFSET_PORT0...")
-    data = i2c_read_block_16b_offset(bus, I2C_SLAVE_ADDR, RESPONSE_OFFSET_PORT0, 4)  # Example: read 4 bytes
+    data = i2c_read_block_16b_offset(bus, ccg_slave_address, RESPONSE_OFFSET_PORT0, 4)  # Example: read 4 bytes
     return data[0]
 
-def check_for_success_response(bus, operation_description):
+def check_for_success_response(bus, ccg_slave_address, operation_description):
     """
     Reads the response register at RESPONSE_OFFSET_PORT0.
     If the response equals SUCCESS_CODE, prints success;
     otherwise, prints an error.
 
+    :param ccg_slave_address:
     :param bus: The smbus2.SMBus instance
     :param operation_description: String describing the operation we are verifying
     :return: True if success, False otherwise
     """
     print(f"Checking response for operation: {operation_description}")
-    response = i2c_read_block_16b_offset(bus, I2C_SLAVE_ADDR, RESPONSE_OFFSET_PORT0, 1)
+    response = i2c_read_block_16b_offset(bus, ccg_slave_address, RESPONSE_OFFSET_PORT0, 1)
     if not response:
         print("ERROR: No data read from response register.")
         return False
@@ -251,95 +242,97 @@ def check_for_success_response(bus, operation_description):
 # -------------------------------------------------------------------
 # Main Firmware Update Flow
 # -------------------------------------------------------------------
-def update_firmware_ccg6df_example(hex_file_path, slave_address=None):
-    """
-    Example:
-      1. Check device mode; if in FW mode => disable PD ports, jump to boot
-      2. Enter flashing mode
-      3. Clear FW metadata row
-      4. Program each row from the IntelHex
-      5. Validate (optional)
-      6. Reset
+def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
 
-    Using i2c_rdwr to allow writes > 32 bytes in a single transaction.
-    """
-    global I2C_SLAVE_ADDR
-    if slave_address is not None:
-        I2C_SLAVE_ADDR = slave_address
-
-    print("Opening I2C bus:", I2C_BUS, "Device address:", hex(I2C_SLAVE_ADDR))
+    print("Opening I2C bus:", I2C_BUS, "Device address:", hex(ccg_slave_address))
     bus = smbus2.SMBus(I2C_BUS)
 
     try:
         # 1. Read DEVICE_MODE Register:
-        # if b1-b0 in current_device_mode are 10 then we are in FW2 and register value will be = 0x86 = 1000 0110
-        # if b1-b0 in current_device_mode are 01 then we are in FW1 and register value will be = 0x85 = 1000 0101
-        # if b1-b0 in current_device_mode are 00 then we are in BTL and register value will be = 0x84 = 1000 0100
-        current_device_mode = read_device_mode(bus)
+        # if b1-b0 in pre_boot_device_mode are 10 then we are in FW2 and register value will be = 0x86 = 1000 0110
+        # if b1-b0 in pre_boot_device_mode are 01 then we are in FW1 and register value will be = 0x85 = 1000 0101
+        # if b1-b0 in pre_boot_device_mode are 00 then we are in BTL and register value will be = 0x84 = 1000 0100
+        pre_boot_device_mode = read_device_mode(bus, ccg_slave_address)
 
-        if current_device_mode == 0x85:
+        if pre_boot_device_mode == 0x85:
             print("Current device mode: 0x85 => FW1")
-        elif current_device_mode == 0x86:
+        elif pre_boot_device_mode == 0x86:
             print("Current device mode: 0x86 => FW2")
         else:
-            print(f"ERROR: Device mode 0x{current_device_mode:02X} is not FW1 or FW2. Aborting.")
+            print(f"ERROR: Device mode 0x{pre_boot_device_mode:02X} is not FW1 or FW2. Aborting.")
             return
 
         # 2. If CCG device is in FIRMWARE Mode:
         # 2a. Disable THE PD port using the Port-Disable Command
         print("Disabling PD ports...")
-        disable_pd_ports(bus)
+        disable_pd_ports(bus, ccg_slave_address)
 
         time.sleep(0.2)
 
         # 2.b: Wait for "SUCCESS" response:
-        if not check_for_success_response(bus, "Disable PD ports"):
+        if not check_for_success_response(bus, ccg_slave_address,"Disable PD ports"):
             print("ERROR: Disabling PD ports did not return success. Aborting update.")
             return
         else:
             print("PD ports disabled successfully. SUCCESS Response Received")
 
         # 2.c Initiate JUMP_TO_BOOT command
-        jump_to_boot(bus)
+        jump_to_boot(bus, ccg_slave_address)
 
-        #wait for a RESET_COMPLETE Event (or ~10ms Delay)
+        # 2.d Wait for REST_COMPLETE event (or ~10ms Delay)
         time.sleep(0.2)
 
-        current_device_mode = read_device_mode(bus)
-
-        if current_device_mode == 0x84:
+        # 3. Read DEVICE_MODE register and verify that device is in bootloader mode.
+        post_boot_device_mode = read_device_mode(bus, ccg_slave_address)
+        if post_boot_device_mode == 0x84:
             print("Current device mode: 0x84 => Bootloader")
         else:
-            print(f"ERROR: Device mode 0x{current_device_mode:02X} is not Bootloader. Aborting.")
+            print(f"ERROR: Device mode 0x{post_boot_device_mode:02X} is not Bootloader. Aborting.")
             return
 
-        #once entered bootloader - OS Restart doesn't help get out of it.
-
-       # reset_device_startup(bus)
-       # print("Reset device from update_firmware_ccg6df_ex")
-
-
-
-        #print("Jumping to bootloader mode...")
-
-
-        # Wait/poll for boot or "Reset Complete" event in real usage
-
-        time.sleep(0.2)
-
-        # 2. Check if in boot mode now
-        #mode_boot = read_device_mode(bus)
-        #print("Device mode after jump:", hex(mode_boot))
-
-        # 3. Enter flashing mode
+        # 4.Initiate flashing mode entry using ENTER_FLASHING_MODE register.
         #print("Entering flashing mode...")
-        #enter_flashing_mode(bus)
+        enter_flashing_mode(bus, ccg_slave_address)
         time.sleep(0.1)
 
-        # 4. Clear FW1 metadata row
-        #print(f"Clearing FW1 metadata row at 0x{FW1_METADATA_ROW:04X} ...")
-        #zero_row = [0x00] * FLASH_ROW_SIZE_BYTES
-        #flash_row_read_write(bus, FW2_METADATA_ROW, zero_row)
+        # 5. Clear the firmware metadata in flash memory
+        # 5.a Fill the data memory with zeros.
+        # 5.b Use the FLASH_ROW_READ_WRITE register to trigger a write of the “zero” buffer into the metadata flash row.
+        if pre_boot_device_mode == 0x86:
+            # 0x86 => FW2
+            print(f"Clearing FW2 metadata row at 0x{FW2_METADATA_ROW:04X} ...")
+            zero_row = [0x00] * FLASH_ROW_SIZE_BYTES
+            flash_row_read_write(bus, FW2_METADATA_ROW, zero_row, ccg_slave_address) # Row 1021 is zeroes (0xFF00)
+            time.sleep(0.1)
+            #flash_row_read_write(bus, FW2_METADATA_ROW + 1, zero_row, ccg_slave_address) # Row 1022 has data (0xFF40)
+            time.sleep(0.1)
+            if not check_for_success_response(bus, ccg_slave_address, "Clearing FW Metadata"):
+                print("ERROR: Clearing FW Metadata did not return success. Aborting update.")
+                return
+            else:
+                print("FW Metadata cleared successfully. SUCCESS Response Received")
+
+
+        elif pre_boot_device_mode == 0x85:
+            # 0x85 => FW1
+            print(f"Clearing FW1 metadata row at 0x{FW1_METADATA_ROW:04X} ...")
+            zero_row = [0x00] * FLASH_ROW_SIZE_BYTES
+            flash_row_read_write(bus, FW1_METADATA_ROW, zero_row, ccg_slave_address) # Row 1023 is zeroes (0xFF80)
+            time.sleep(0.1)
+            #flash_row_read_write(bus, FW1_METADATA_ROW + 1, zero_row, ccg_slave_address) # Row 1024 has data (0xFFC0)
+            time.sleep(0.1)
+            if not check_for_success_response(bus, ccg_slave_address, "Clearing FW Metadata"):
+                print("ERROR: Clearing FW Metadata did not return success. Aborting update.")
+                return
+            else:
+                print("FW Metadata cleared successfully. SUCCESS Response Received")
+
+
+        else:
+            print(f"ERROR: pre_boot_device_mode = 0x{pre_boot_device_mode:02X} is not FW1 or FW2, cannot clear metadata.")
+            return
+
+        # 5.c Wait for a SUCCESS response after clearing FW Metadata.
 
         """
         time.sleep(0.1)
@@ -415,20 +408,14 @@ def update_firmware_ccg6df_example(hex_file_path, slave_address=None):
 if __name__ == "__main__":
     firmware_hex_path = "/home/firas/Documents/CYPD6228/CYPD6228-96BZXI_notebook_dualapp_usb4_228_2.hex"
 
-    # We first do the usual device reset at startup:
-    #print("Resetting device at startup...")
-    #bus = smbus2.SMBus(I2C_BUS)
-    #reset_device_startup(bus)
-    #bus.close()
-
-    # We'll try address 0x40 first, then 0x42 if 0x40 fails.
-    possible_addresses = [0x40, 0x42]
+    # We'll try CCG6DF I2C_SLAVE_ADDRESS 0x40 first, then 0x42 if 0x40 fails.
+    possible_addresses = [0x42, 0x40]
 
     for addr in possible_addresses:
         print(f"\nAttempting firmware update for CCG6DF at address 0x{addr:02X}...")
         try:
             # Call our function *with* the chosen address:
-            update_firmware_ccg6df_example(firmware_hex_path, slave_address=addr)
+            update_firmware_ccg6df_example(firmware_hex_path, ccg_slave_address=addr)
 
             # If we got this far, let's assume success or normal completion:
             print("Firmware update attempt completed (check logs for success/failure).")
