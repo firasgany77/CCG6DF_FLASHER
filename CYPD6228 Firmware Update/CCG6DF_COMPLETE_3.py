@@ -12,6 +12,7 @@ All addresses, constants, and partial opcodes are from the original request.
 
 import os
 import smbus2
+import time
 from smbus2 import i2c_msg
 from intelhex import IntelHex
 
@@ -246,13 +247,15 @@ def update_firmware_ccg6df_example(hex_file_path):
         # If in FW mode => disable PD ports => jump to boot
         print("Disabling PD ports...")
         disable_pd_ports(bus)
+        time.sleep(0.5) # disabling this timer will prevent entering boot mode
+        # on the other hand adding it stops successful write using flash_row_read_write function. 
+
 
         print("Jumping to bootloader mode...")
         jump_to_boot(bus)
 
         # Wait/poll for boot or "Reset Complete" event in real usage
-        import time
-        time.sleep(0.2)
+        time.sleep(0.5)
 
         # 2. Check if in boot mode now
         mode_boot = read_device_mode(bus)
