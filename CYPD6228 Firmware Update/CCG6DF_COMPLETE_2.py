@@ -11,17 +11,28 @@ from intelhex import IntelHex
 # -------------------------------------------------------------------
 I2C_BUS                = 2       # Example: I2C bus number
 
+"""
 # NEW: Define the lower and upper flashing limits for partial firmware updates
-LOWER_FLASHING_LIMIT   = 0x0600  # FW1CT START (row 25)
-UPPER_FLASHING_LIMIT   = 0x2880  # FW1 END (row 162)
+LOWER_FLASHING_LIMIT   = 0x0A00  # Row 41
+UPPER_FLASHING_LIMIT   = 0x1000  # Row 65  
+                                 # 65 - 41 +1 = 25 
+                                 # 132 - 83 + 1 = 50"""
+
+
+# NEW: Define the lower and upper flashing limits for partial firmware updates
+LOWER_FLASHING_LIMIT   = 0x2300  # FW1 0x0523
+UPPER_FLASHING_LIMIT   = 0x5AC0  # Row 65
+                                 # 65 - 41 +1 = 25
+                                 # 132 - 83 + 1 = 50  S
+
 
 FLASH_ROW_SIZE_BYTES   = 64      # Flash row size for CCG6DF
 SUCCESS_CODE           = 0x02    # Example "command success" code
 
 # for (5.a Fill data memory with zeroes)
 # 0x0500 - 0xFEC0 covers FW1-FW2 Memory data, including Vectors and Startup-Code, Configuration Table.
-DATA_MEM_LOWER_LIMIT   = 0x0600 # FW1 START
-DATA_MEM_UPPER_LIMIT   = 0x2880 # FW2 START (End of FW1 change-allowed region)
+#DATA_MEM_LOWER_LIMIT   = 0x0600 # FW1 START
+#DATA_MEM_UPPER_LIMIT   = 0x2880 # FW2 START (End of FW1 change-allowed region)
 
 # -------------------------------------------------------------------
 # Offsets & Opcodes
@@ -340,18 +351,18 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
         # 5. Clear the firmware metadata in flash memory
         # 5.a Fill data memory with zeroes
         # NEW: Fill data memory from DATA_MEM_LOWER_LIMIT to DATA_MEM_UPPER_LIMIT
-        print(f"Filling data memory with zeroes from 0x{DATA_MEM_LOWER_LIMIT:04X} to 0x{DATA_MEM_UPPER_LIMIT:04X} ...")
-        for base_addr in range(DATA_MEM_LOWER_LIMIT, DATA_MEM_UPPER_LIMIT + 1, FLASH_ROW_SIZE_BYTES):
-            zero_row = [0x00] * FLASH_ROW_SIZE_BYTES
-            row_num = base_addr // FLASH_ROW_SIZE_BYTES + 1
+        #print(f"Filling data memory with zeroes from 0x{DATA_MEM_LOWER_LIMIT:04X} to 0x{DATA_MEM_UPPER_LIMIT:04X} ...")
+        #for base_addr in range(DATA_MEM_LOWER_LIMIT, DATA_MEM_UPPER_LIMIT + 1, FLASH_ROW_SIZE_BYTES):
+        #    zero_row = [0x00] * FLASH_ROW_SIZE_BYTES
+        #    row_num = base_addr // FLASH_ROW_SIZE_BYTES + 1
 
-            print(f"  Writing zero row #{row_num}, offset 0x{base_addr:04X}")
-            flash_row_read_write(bus, row_num, zero_row, ccg_slave_address)
-            #time.sleep(0.5)
+        #    print(f"  Writing zero row #{row_num}, offset 0x{base_addr:04X}")
+        #    flash_row_read_write(bus, row_num, zero_row, ccg_slave_address)
+        #    #time.sleep(0.5)
 
-            if not check_for_success_response(bus, ccg_slave_address, f"Write zero row #{row_num}"):
-                print("ERROR: Writing zero row failed. Aborting update.")
-                return
+        #    if not check_for_success_response(bus, ccg_slave_address, f"Write zero row #{row_num}"):
+        #        print("ERROR: Writing zero row failed. Aborting update.")
+        #        return
 
         # 5.b Use the FLASH_ROW_READ_WRITE register to trigger a write of the “zero” buffer into the metadata flash row.
         if pre_boot_device_mode == 0x86:
@@ -376,37 +387,22 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
         print(f"Parsing HEX file: {hex_file_path}")
         ih = IntelHex(hex_file_path)
 
-        start_addr = ih.minaddr()
-        end_addr   = ih.maxaddr()
+        start_addr = LOWER_FLASHING_LIMIT
+        end_addr = UPPER_FLASHING_LIMIT
 
-        print(f"start_addr: {start_addr}")
-        print(f"end_addr: {end_addr}")
-
-        # Enforce a maximum address limit to match device flash size (e.g., 64 KB)
-        MAX_FLASH_ADDRESS = 0xFFFF  # example or 0x2840 in your snippet
-        if end_addr > MAX_FLASH_ADDRESS:
-            print(
-                f"Warning: HEX file contains addresses beyond device's flash range. Limiting to 0x{MAX_FLASH_ADDRESS:04X}.")
-            end_addr = MAX_FLASH_ADDRESS
-
-        # Now constrain further to LOWER_FLASHING_LIMIT / UPPER_FLASHING_LIMIT
-        if start_addr < LOWER_FLASHING_LIMIT:
-            print(f"Forcing start_addr up to 0x{LOWER_FLASHING_LIMIT:04X}")
-            start_addr = LOWER_FLASHING_LIMIT
-        if end_addr > UPPER_FLASHING_LIMIT:
-            print(f"Forcing end_addr down to 0x{UPPER_FLASHING_LIMIT:04X}")
-            end_addr = UPPER_FLASHING_LIMIT
+        print(f"start_addr: {start_addr:04x}")
+        print(f"end_addr: {end_addr:04x}")
 
         # Display final range after bounding
         print(f"Programming from 0x{start_addr:04X} to 0x{end_addr:04X} in increments of 0x40.")
 
-        INCREMENT = FLASH_ROW_SIZE_BYTES # 64 bytes per row
+        increment = FLASH_ROW_SIZE_BYTES # 64 bytes per row
 
-        for base_addr in range(start_addr, end_addr + 1, INCREMENT):
+        for base_addr in range(start_addr, end_addr + 1, increment):
             row_data = []
             is_empty = True  # Flag to detect empty rows
 
-            for offset in range(INCREMENT):
+            for offset in range(increment):
                 addr = base_addr + offset
                 if addr > end_addr:
                     row_data.append(0xFF)  # Fill with padding if beyond end address
@@ -418,10 +414,10 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
 
             if is_empty:
                 # Skip flashing this row since it's empty
-                print(f"Skipping empty row #{base_addr // INCREMENT + 1} at flash offset: 0x{base_addr:04X}" )
+                print(f"Skipping empty row #{base_addr // increment + 1} at flash offset: 0x{base_addr:04X}")
                 continue
 
-            row_num = base_addr // INCREMENT + 1
+            row_num = base_addr // increment + 1
             print(f"Writing row #{row_num}, flash offset: 0x{base_addr:04X}, data: {row_data[:8]}...")
 
             flash_row_read_write(bus, row_num, row_data, ccg_slave_address=ccg_slave_address)
