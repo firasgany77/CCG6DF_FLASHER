@@ -20,8 +20,8 @@ SUCCESS_CODE           = 0x02    # Example "command success" code
 
 # NEW: Define two constants for data memory zero-filling
 # 0x0500 - 0xFEC0 covers FW1-FW2 Memory data, including Vectors and Startup-Code, Configuration Table.
-DATA_MEM_LOWER_LIMIT   = 0x0500  # Example start of data memory region
-DATA_MEM_UPPER_LIMIT   = 0xFEC0  # Example end of data memory region
+DATA_MEM_LOWER_LIMIT   = 0x0500 # FW1 START
+DATA_MEM_UPPER_LIMIT   = 0x37C0 # FW2 START (End of FW1 change-allowed region)
 
 # -------------------------------------------------------------------
 # Offsets & Opcodes
@@ -152,7 +152,12 @@ def flash_row_read_write(bus, row_number, data_to_write=None, ccg_slave_address=
       Byte[1]: command => (0=read, 1=write)
       Byte[2..3]: row_number (LSB, MSB)
       If writing, append the entire row data (64 bytes).
+
+      In Dual Firmware Mode, flash read/writes can only be done on the inactive firmware copy.
+      If Firmware1 is active, flash access is limited to rows above FW2_START.
+      If Firmware2 is active, flash access is limited rows between FW1_START and FW2_START.
     """
+
     if data_to_write is not None:
         if len(data_to_write) != FLASH_ROW_SIZE_BYTES:
             raise ValueError(f"Data must match the FLASH_ROW_SIZE_BYTES ({FLASH_ROW_SIZE_BYTES}).")
@@ -417,7 +422,9 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
 # Example usage if run directly
 # -------------------------------------------------------------------
 if __name__ == "__main__":
-    firmware_hex_path = "/home/firas/Documents/CYPD6228/CYPD6228-96BZXI_notebook_dualapp_usb4_228_2.hex"
+    #firmware_hex_path = "/home/firas/Documents/CYPD6228/CYPD6228-96BZXI_notebook_dualapp_usb4_228_2.hex"
+    firmware_hex_path = "/home/firas/Documents/CYPD6228/CYPD6228-96BZXI_notebook_dualapp_usb4_3_5_1_4_0_0_1_nb_FW1_EDITED.hex"
+
 
     # We'll try CCG6DF I2C_SLAVE_ADDRESS 0x42 first, then 0x40 if 0x42 fails.
     possible_addresses = [0x40, 0x42]
