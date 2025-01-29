@@ -93,11 +93,7 @@ vice versa).
    7.a Use PDPORT_ENABLE register to disable PD ports.
    7.b Wait for SUCCESS response.
    7.c Use RESET register to go through a fresh start-up cycle which will load the new firmware binary.
-   7.d Wait for RESET_COMPLETE event.
-   
-   """
-
-
+   7.d Wait for RESET_COMPLETE event."""
 # -------------------------------------------------------------------
 # Helper functions using i2c_rdwr (no 32-byte limit)
 # -------------------------------------------------------------------
@@ -285,10 +281,11 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
     bus = smbus2.SMBus(I2C_BUS)
 
     try:
-        # 1. Read DEVICE_MODE Register:
+        # 1. Check DEVICE_MODE Register:
         pre_boot_device_mode = read_device_mode(bus, ccg_slave_address)
         print(f"Initial Device Mode: 0x{pre_boot_device_mode:02X}")
-
+        # 2. Identify the firmware binary corresponding to the inactive firmware application (FW2 if FW1 is running and
+        # vice versa).
         if pre_boot_device_mode == 0x85:
             print("Current device mode: 0x85 => FW1")
         elif pre_boot_device_mode == 0x86:
@@ -297,38 +294,43 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
             print(f"ERROR: Device mode 0x{pre_boot_device_mode:02X} is not FW1 or FW2. Aborting.")
             return
 
+        # (only for HPIv1)
         # 2. If CCG device is in FIRMWARE Mode:
         # 2a. Disable THE PD port using the Port-Disable Command
         print("Disabling PD ports...")
         disable_pd_ports(bus, ccg_slave_address)
         time.sleep(0.5)  # Increased delay
 
+        # (only for HPIv1)
         # 2.b: Wait for "SUCCESS" response:
-        if not check_for_success_response(bus, ccg_slave_address, "Disable PD ports"):
-            print("ERROR: Disabling PD ports did not return success. Aborting update.")
-            return
-        else:
-            print("PD ports disabled successfully. SUCCESS Response Received")
+        # if not check_for_success_response(bus, ccg_slave_address, "Disable PD ports"):
+        #    print("ERROR: Disabling PD ports did not return success. Aborting update.")
+        #    return
+        #else:
+        #    print("PD ports disabled successfully. SUCCESS Response Received")
 
+        #(only for HPIv1)
         # 2.c Initiate JUMP_TO_BOOT command
         # print("Jumping to bootloader mode...")
         # jump_to_boot(bus, ccg_slave_address)
 
+        # (only for HPIv1)
         # 2.d Wait for REST_COMPLETE event (or ~10ms Delay)
-        time.sleep(0.5)  # Increased delay
+        # time.sleep(0.5)  # Increased delay
 
+        # (only for HPIv1)
         # 3. Read DEVICE_MODE register and verify what is the current mode:
-        post_boot_device_mode = read_device_mode(bus, ccg_slave_address)
-        print(f"Post Boot Device Mode: 0x{post_boot_device_mode:02X}")
-        if post_boot_device_mode == 0x84:
-            print("Current device mode: 0x84 => Bootloader Mode")
-        elif post_boot_device_mode == 0x86:
-            print("Current device mode: 0x86 => Firmware Mode: FW2")
-        elif post_boot_device_mode == 0x85:
-            print("Current device mode: 0x85 => Firmware Mode: FW1")
-        else:
-            print(f"ERROR: Device mode 0x{post_boot_device_mode:02X} is not in BTL, FW1, FW2 Mode Aborting.")
-            return
+        #post_boot_device_mode = read_device_mode(bus, ccg_slave_address)
+        #print(f"Post Boot Device Mode: 0x{post_boot_device_mode:02X}")
+        #if post_boot_device_mode == 0x84:
+        #    print("Current device mode: 0x84 => Bootloader Mode")
+        #elif post_boot_device_mode == 0x86:
+        #    print("Current device mode: 0x86 => Firmware Mode: FW2")
+        #elif post_boot_device_mode == 0x85:
+        #    print("Current device mode: 0x85 => Firmware Mode: FW1")
+        #else:
+        #    print(f"ERROR: Device mode 0x{post_boot_device_mode:02X} is not in BTL, FW1, FW2 Mode Aborting.")
+        #    return
 
         # 4. Initiate flashing mode entry using ENTER_FLASHING_MODE register.
         print("Entering flashing mode...")
@@ -341,7 +343,7 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
         print(f"Filling data memory with zeroes from 0x{DATA_MEM_LOWER_LIMIT:04X} to 0x{DATA_MEM_UPPER_LIMIT:04X} ...")
         for base_addr in range(DATA_MEM_LOWER_LIMIT, DATA_MEM_UPPER_LIMIT + 1, FLASH_ROW_SIZE_BYTES):
             zero_row = [0x00] * FLASH_ROW_SIZE_BYTES
-            row_num = base_addr // FLASH_ROW_SIZE_BYTES
+            row_num = base_addr // FLASH_ROW_SIZE_BYTES + 1
 
             print(f"  Writing zero row #{row_num}, offset 0x{base_addr:04X}")
             flash_row_read_write(bus, row_num, zero_row, ccg_slave_address)
@@ -398,7 +400,7 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
         # Display final range after bounding
         print(f"Programming from 0x{start_addr:04X} to 0x{end_addr:04X} in increments of 0x40.")
 
-        INCREMENT = 0x40  # 64 bytes per row
+        INCREMENT = FLASH_ROW_SIZE_BYTES # 64 bytes per row
 
         for base_addr in range(start_addr, end_addr + 1, INCREMENT):
             row_data = []
@@ -416,7 +418,7 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
 
             if is_empty:
                 # Skip flashing this row since it's empty
-                print(f"Skipping empty row at flash offset: 0x{base_addr:04X}")
+                print(f"Skipping empty row #{base_addr // INCREMENT + 1} at flash offset: 0x{base_addr:04X}" )
                 continue
 
             row_num = base_addr // INCREMENT + 1
