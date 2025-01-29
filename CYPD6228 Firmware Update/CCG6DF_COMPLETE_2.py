@@ -158,7 +158,7 @@ def flash_row_read_write(bus, row_number, data_to_write=None, ccg_slave_address=
             raise ValueError(f"Data must match the FLASH_ROW_SIZE_BYTES ({FLASH_ROW_SIZE_BYTES}).")
         # Compose the command buffer
         cmd_buf = [
-            0x46,            # 'F'
+            0x46,            # 'F' Signature
             0x01,            # Write
             row_number & 0xFF,
             (row_number >> 8) & 0xFF
@@ -169,13 +169,14 @@ def flash_row_read_write(bus, row_number, data_to_write=None, ccg_slave_address=
     else:
         # Read
         cmd_buf = [
-            0x46,
+            0x46,            # "F' Signature
             0x00,            # 0 => Read
             row_number & 0xFF,
             (row_number >> 8) & 0xFF
         ]
+        # write-phase:
         i2c_write_block_16b_offset(bus, ccg_slave_address, FLASH_ROW_READ_WRITE_OFFSET, cmd_buf)
-        # Read 64 bytes of data
+        # read-phase: Read 64 bytes of data
         return i2c_read_block_16b_offset(bus, ccg_slave_address, FLASH_ROW_READ_WRITE_OFFSET, FLASH_ROW_SIZE_BYTES)
 
 def disable_pd_ports(bus, ccg_slave_address):
@@ -276,24 +277,29 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
             print("PD ports disabled successfully. SUCCESS Response Received")
 
         # 2.c Initiate JUMP_TO_BOOT command
-        jump_to_boot(bus, ccg_slave_address)
+        # print("Jumping to bootloader mode...")
+        # jump_to_boot(bus, ccg_slave_address)
 
         # 2.d Wait for REST_COMPLETE event (or ~10ms Delay)
         time.sleep(0.5)  # Increased delay
 
-        # 3. Read DEVICE_MODE register and verify that device is in bootloader mode.
+        # 3. Read DEVICE_MODE register and verify what is the current mode:
         post_boot_device_mode = read_device_mode(bus, ccg_slave_address)
         print(f"Post Boot Device Mode: 0x{post_boot_device_mode:02X}")
         if post_boot_device_mode == 0x84:
-            print("Current device mode: 0x84 => Bootloader")
+            print("Current device mode: 0x84 => Bootloader Mode")
+        elif post_boot_device_mode == 0x86:
+            print("Current device mode: 0x86 => Firmware Mode: FW2")
+        elif post_boot_device_mode == 0x85:
+            print("Current device mode: 0x85 => Firmware Mode: FW1")
         else:
-            print(f"ERROR: Device mode 0x{post_boot_device_mode:02X} is not Bootloader. Aborting.")
+            print(f"ERROR: Device mode 0x{post_boot_device_mode:02X} is not in BTL, FW1, FW2 Mode Aborting.")
             return
 
         # 4. Initiate flashing mode entry using ENTER_FLASHING_MODE register.
         print("Entering flashing mode...")
         enter_flashing_mode(bus, ccg_slave_address)
-        time.sleep(0.5)  # Increased delay
+        time.sleep(1)  # Increased delay
 
         # 5. Clear the firmware metadata in flash memory
         # 5.a Fill data memory with zeroes
@@ -304,7 +310,7 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
             row_num = base_addr // FLASH_ROW_SIZE_BYTES
 
             print(f"  Writing zero row #{row_num}, offset 0x{base_addr:04X}")
-            flash_row_read_write(bus, row_num, zero_row, ccg_slave_address)
+            #flash_row_read_write(bus, row_num, zero_row, ccg_slave_address)
             time.sleep(0.5)
 
             if not check_for_success_response(bus, ccg_slave_address, f"Write zero row #{row_num}"):
@@ -415,6 +421,14 @@ if __name__ == "__main__":
 
     # We'll try CCG6DF I2C_SLAVE_ADDRESS 0x42 first, then 0x40 if 0x42 fails.
     possible_addresses = [0x40, 0x42]
+
+    # the 40 works fine with the following order:
+    # 1. Turn OFF EE-3200 (Disconnect Power)
+    # 2. Erase All Flash Using PsoC Programmer + Miniprog4 Adapter
+    # 3. Patch Image (228-2) Using PsoC Programmer + Miniprog4 Adapter
+    # 4. Disconnect Type-C Cable for MiniProg4
+    # 5. Power ON EE-3200
+    # 6. Run CCG6DF_COMPLETE_2
 
     for addr in possible_addresses:
         print(f"\nAttempting firmware update for CCG6DF at address 0x{addr:02X}...")

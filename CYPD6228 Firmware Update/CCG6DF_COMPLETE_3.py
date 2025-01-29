@@ -251,8 +251,8 @@ def update_firmware_ccg6df_example(hex_file_path):
         # on the other hand adding it stops successful write using flash_row_read_write function. 
 
 
-        print("Jumping to bootloader mode...")
-        jump_to_boot(bus)
+        #print("Jumping to bootloader mode...")
+        #jump_to_boot(bus)
 
         # Wait/poll for boot or "Reset Complete" event in real usage
         time.sleep(0.5)
