@@ -20,7 +20,7 @@ UPPER_FLASHING_LIMIT   = 0x1000  # Row 65
 
 
 # NEW: Define the lower and upper flashing limits for partial firmware updates
-LOWER_FLASHING_LIMIT   = 0x2300  # FW1 0x0523
+LOWER_FLASHING_LIMIT   = 0x0A00  # FW1 0x0523
 UPPER_FLASHING_LIMIT   = 0x5AC0  # Row 65
                                  # 65 - 41 +1 = 25
                                  # 132 - 83 + 1 = 50  S
@@ -28,6 +28,8 @@ UPPER_FLASHING_LIMIT   = 0x5AC0  # Row 65
 
 FLASH_ROW_SIZE_BYTES   = 64      # Flash row size for CCG6DF
 SUCCESS_CODE           = 0x02    # Example "command success" code
+FLASH_DATA_AVAILABLE   = 0x03    # Flash data available, flash row data requested by EC is available in data memory.
+
 
 # for (5.a Fill data memory with zeroes)
 # 0x0500 - 0xFEC0 covers FW1-FW2 Memory data, including Vectors and Startup-Code, Configuration Table.
@@ -43,6 +45,7 @@ JUMP_TO_BOOT_OFFSET          = 0x0007
 FLASH_ROW_READ_WRITE_OFFSET  = 0x000C
 RESET_OFFSET                 = 0x0800 # 0x0800 the one that works
 PDPORT_ENABLE_OFFSET         = 0x002C
+FW_BIN_LOCATION_OFFSET       = 0x0028
 
 PORT_DISABLE_OPCODE          = 0x11
 PD_CONTROL_OFFSET_PORT0      = 0x1006
@@ -380,7 +383,7 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
         else:
             print(f"ERROR: pre_boot_device_mode = 0x{pre_boot_device_mode:02X} is not FW1 or FW2, cannot clear metadata.")
             return
-
+        """ 
         # 6. Copy the data into the data memory.
         time.sleep(0.1)
         # Program each row from the IntelHex file
@@ -426,16 +429,51 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
             if not check_for_success_response(bus, ccg_slave_address, f"write row #{row_num}"):
                 print("Aborting due to error writing flash row.")
                 return
+        """
+
+
+
+
+        # Read
+        cmd_buf = [
+            0x46,  # Byte 0 : 'F' signature
+            0x00,  # Byte 1 : 0 => Read
+            0x23,  # byte 2 : Row Number MSB
+            0x00,  # byte 3 : Row Number LSB
+        ]
+
+        # Write phase: send the "read" command
+        i2c_write_block_16b_offset(bus, ccg_slave_address, FLASH_ROW_READ_WRITE_OFFSET, cmd_buf)
+
+        if not check_for_success_response(bus, ccg_slave_address, f"write phase to read row #{0x2300}"):
+            print("Aborting due to error writing flash row.")
+
+        # Read phase: read 64 bytes of data from the flash row
+        read_row_val = i2c_read_block_16b_offset(
+            bus,
+            ccg_slave_address,
+            FLASH_ROW_READ_WRITE_OFFSET,
+            FLASH_ROW_SIZE_BYTES,
+        )
+
+        if not check_for_success_response(bus, ccg_slave_address, f"read phase to read row#{0x2300}"):
+            print("Aborting due to error writing flash row.")
+
+        # 'read_row_val' is now a list of 64 bytes from the specified flash row
+        # Print the read values in hex form, e.g. 0x01, 0xFF, ...
+        hex_values = [f"0x{byte:02X}" for byte in read_row_val]
+        print(f"Data read from row #{row_number} in hex:")
+        print(hex_values)
 
         # 6. Validate firmware if needed
-        print("Validating firmware (placeholder)...")
-        validate_firmware(bus)
-        time.sleep(0.1)
+        #print("Validating firmware (placeholder)...")
+        #validate_firmware(bus)
+        #time.sleep(0.1)
 
         # 7. Reset to run new firmware
-        print("Resetting device to run new firmware...")
-        reset_device(bus, 1, ccg_slave_address=ccg_slave_address)
-        print("Firmware update sequence complete.")
+        #print("Resetting device to run new firmware...")
+        #reset_device(bus, 1, ccg_slave_address=ccg_slave_address)
+        #print("Firmware update sequence complete.")
 
     except Exception as e:
         print(f"Exception occurred: {e}")
