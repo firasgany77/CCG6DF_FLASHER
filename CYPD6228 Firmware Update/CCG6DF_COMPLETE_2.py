@@ -401,6 +401,8 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
 
     except Exception as e:
         print(f"Exception occurred: {e}")
+        raise  # Re-throw the exception, so the outer loop sees it
+
 
     finally:
         bus.close()
@@ -412,7 +414,7 @@ if __name__ == "__main__":
     firmware_hex_path = "/home/firas/Documents/CYPD6228/CYPD6228-96BZXI_notebook_dualapp_usb4_228_2.hex"
 
     # We'll try CCG6DF I2C_SLAVE_ADDRESS 0x42 first, then 0x40 if 0x42 fails.
-    possible_addresses = [0x42, 0x40]
+    possible_addresses = [0x40, 0x42]
 
     for addr in possible_addresses:
         print(f"\nAttempting firmware update for CCG6DF at address 0x{addr:02X}...")
