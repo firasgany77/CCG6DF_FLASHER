@@ -12,16 +12,16 @@ from intelhex import IntelHex
 I2C_BUS                = 2       # Example: I2C bus number
 
 # NEW: Define the lower and upper flashing limits for partial firmware updates
-LOWER_FLASHING_LIMIT   = 0x0A00  # e.g., row 41 (FW1 Start)
-UPPER_FLASHING_LIMIT   = 0x2840  # e.g., row 162 (FW1 END)
+LOWER_FLASHING_LIMIT   = 0x0600  # FW1CT START (row 25)
+UPPER_FLASHING_LIMIT   = 0x2880  # FW1 END (row 162)
 
 FLASH_ROW_SIZE_BYTES   = 64      # Flash row size for CCG6DF
 SUCCESS_CODE           = 0x02    # Example "command success" code
 
-# NEW: Define two constants for data memory zero-filling
+# for (5.a Fill data memory with zeroes)
 # 0x0500 - 0xFEC0 covers FW1-FW2 Memory data, including Vectors and Startup-Code, Configuration Table.
-DATA_MEM_LOWER_LIMIT   = 0x0500 # FW1 START
-DATA_MEM_UPPER_LIMIT   = 0x37C0 # FW2 START (End of FW1 change-allowed region)
+DATA_MEM_LOWER_LIMIT   = 0x0600 # FW1 START
+DATA_MEM_UPPER_LIMIT   = 0x2880 # FW2 START (End of FW1 change-allowed region)
 
 # -------------------------------------------------------------------
 # Offsets & Opcodes
@@ -315,8 +315,8 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
             row_num = base_addr // FLASH_ROW_SIZE_BYTES
 
             print(f"  Writing zero row #{row_num}, offset 0x{base_addr:04X}")
-            #flash_row_read_write(bus, row_num, zero_row, ccg_slave_address)
-            time.sleep(0.5)
+            flash_row_read_write(bus, row_num, zero_row, ccg_slave_address)
+            #time.sleep(0.5)
 
             if not check_for_success_response(bus, ccg_slave_address, f"Write zero row #{row_num}"):
                 print("ERROR: Writing zero row failed. Aborting update.")
@@ -390,7 +390,7 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
                 print(f"Skipping empty row at flash offset: 0x{base_addr:04X}")
                 continue
 
-            row_num = base_addr // INCREMENT
+            row_num = base_addr // INCREMENT + 1
             print(f"Writing row #{row_num}, flash offset: 0x{base_addr:04X}, data: {row_data[:8]}...")
 
             flash_row_read_write(bus, row_num, row_data, ccg_slave_address=ccg_slave_address)
