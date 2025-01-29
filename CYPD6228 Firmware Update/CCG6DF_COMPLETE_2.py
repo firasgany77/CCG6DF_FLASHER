@@ -69,6 +69,35 @@ HPIv1 Method:
 Use the RESET register to go through a fresh start-up cycle which will load the new firmware binary.
 """
 
+"""
+HPIv2 Method:
+
+1. Check the DEVICE_MODE register.
+2. Identify the firmware binary corresponding to the inactive firmware application (FW2 if FW1 is running and
+vice versa).
+3. Initiate flashing mode entry using ENTER_FLASHING_MODE register.
+4. Clear the metadata corresponding to the firmware being updated:
+   4.a Fill the data memory with zeroes.
+   4.b Use the FLASH_ROW_READ_WRITE register to trigger a write of the “zero” buffer into the metadata flash row.
+   4.c Wait for a SUCCESS response.
+5. For each flash row to be updated:
+   5.a Copy the data into the flash read/write memory.
+   5.b Use the FLASH_ROW_READ_WRITE register to trigger writing of data to the desired flash row.
+   5.c Wait for a SUCCESS response.
+   5.d If read-verify is required:
+   5.d.i Use the FLASH_ROW_READ_WRITE register to trigger reading of data from the desired flash row.
+   5.d.ii. Wait for a FLASH_DATA_AVAILABLE response from CCG.
+   5.d.iii Read the data from the flash read/write memory and verify.
+6. Use VALIDATE_FW register to request the new firmware to be validated.
+7. If new firmware has to be activated:
+   7.a Use PDPORT_ENABLE register to disable PD ports.
+   7.b Wait for SUCCESS response.
+   7.c Use RESET register to go through a fresh start-up cycle which will load the new firmware binary.
+   7.d Wait for RESET_COMPLETE event.
+   
+   """
+
+
 # -------------------------------------------------------------------
 # Helper functions using i2c_rdwr (no 32-byte limit)
 # -------------------------------------------------------------------
