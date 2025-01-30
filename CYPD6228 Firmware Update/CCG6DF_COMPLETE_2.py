@@ -45,7 +45,7 @@ JUMP_TO_BOOT_OFFSET          = 0x0007
 FLASH_ROW_READ_WRITE_OFFSET  = 0x000C
 RESET_OFFSET                 = 0x0800 # 0x0800 the one that works
 PDPORT_ENABLE_OFFSET         = 0x002C
-FW_BIN_LOCATION_OFFSET       = 0x0028
+FIRMWARE_BINARY_LOCATION_OFFSET = 0x0028
 
 PORT_DISABLE_OPCODE          = 0x11
 PD_CONTROL_OFFSET_PORT0      = 0x1006
@@ -431,15 +431,15 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
                 return
         """
 
-
-
-
         # Read
         cmd_buf = [
             0x46,  # Byte 0 : 'F' signature
             0x00,  # Byte 1 : 0 => Read
-            0x23,  # byte 2 : Row Number MSB
-            0x00,  # byte 3 : Row Number LSB
+            0x40,  # byte 2 : Row Number MSB
+            0x0A,  # byte 3 : Row Number LSB
+                   # 0x09C0 is a row of zeroes after bootloader end
+                   # FIRMWARE_BINARY_LOCATION = 0x0028
+
         ]
 
         # Write phase: send the "read" command
@@ -452,8 +452,8 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
         read_row_val = i2c_read_block_16b_offset(
             bus,
             ccg_slave_address,
-            FLASH_ROW_READ_WRITE_OFFSET,
-            FLASH_ROW_SIZE_BYTES,
+            0x400A,
+            64,
         )
 
         if not check_for_success_response(bus, ccg_slave_address, f"read phase to read row#{0x2300}"):
@@ -462,8 +462,12 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
         # 'read_row_val' is now a list of 64 bytes from the specified flash row
         # Print the read values in hex form, e.g. 0x01, 0xFF, ...
         hex_values = [f"0x{byte:02X}" for byte in read_row_val]
-        print(f"Data read from row #{row_number} in hex:")
+        print(f"Data read from row #{0x2300} in hex:")
         print(hex_values)
+
+
+
+
 
         # 6. Validate firmware if needed
         #print("Validating firmware (placeholder)...")
