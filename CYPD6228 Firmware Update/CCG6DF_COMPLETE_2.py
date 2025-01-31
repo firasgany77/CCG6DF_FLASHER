@@ -195,7 +195,7 @@ def reset_device(bus, reset_type=1, ccg_slave_address=None):
     signature = 0x52  # 'R'
     i2c_write_block_16b_offset(bus, ccg_slave_address, RESET_OFFSET, [signature, reset_type & 0xFF])
 
-def flash_row_read_write(bus, row_number, data_to_write=None, ccg_slave_address=None):
+def flash_row_read_write(bus, row_number, data_to_write=None, ccg_slave_address=None, BYTES_TO_READ=None):
     """
     Flash row read/write command:
       Byte[0]: 'F'(0x46) => signature
@@ -232,7 +232,7 @@ def flash_row_read_write(bus, row_number, data_to_write=None, ccg_slave_address=
         # write-phase:
         i2c_write_block_16b_offset(bus, ccg_slave_address, FLASH_ROW_READ_WRITE_OFFSET, cmd_buf)
         # read-phase: Read 64 bytes of data
-        return i2c_read_block_16b_offset(bus, ccg_slave_address, FLASH_ROW_READ_WRITE_OFFSET, FLASH_ROW_SIZE_BYTES)
+        return i2c_read_block_16b_offset(bus, ccg_slave_address, FLASH_ROW_READ_WRITE_OFFSET, BYTES_TO_READ)
 
 def disable_pd_ports(bus, ccg_slave_address):
     """
@@ -262,41 +262,19 @@ def reset_device_startup(bus, ccg_slave_address):
     import time
     time.sleep(0.5)
 
-def read_response_register_port0(bus, ccg_slave_address):
-    """
-    Read the response register at RESPONSE_OFFSET_PORT0 (0x1400).
-    Returns the data read from the register.
-    """
-    print("Reading response register at RESPONSE_OFFSET_PORT0...")
-    data = i2c_read_block_16b_offset(bus, ccg_slave_address, RESPONSE_OFFSET_PORT0, 4)  # Example: read 4 bytes
-    return data[0]
 
-def check_for_success_response(bus, ccg_slave_address, operation_description):
+def check_response_code(bus, ccg_slave_address):
     """
-    Reads the response register at RESPONSE_OFFSET_PORT0.
-    If the response equals SUCCESS_CODE, prints success;
-    otherwise, prints an error.
-
-    :param ccg_slave_address:
-    :param bus: The smbus2.SMBus instance
-    :param operation_description: String describing the operation we are verifying
-    :return: True if success, False otherwise
+    Reads the response register at RESPONSE_OFFSET_PORT0 and returns the numeric code.
+    Always prints the code, but does NOT decide success/failure anymore.
     """
-    print(f"Checking response for operation: {operation_description}")
-    response = i2c_read_block_16b_offset(bus, ccg_slave_address, RESPONSE_OFFSET_PORT0, 1)
-    if not response:
-        print("ERROR: No data read from response register.")
-        return False
+    response_bytes = i2c_read_block_16b_offset(bus, ccg_slave_address, PD_CONTROL_OFFSET_PORT0, 1)
+    if not response_bytes:
+        print("WARNING: No data read from response register. Returning 0xFF.")
+        return 0xFF
 
-    resp_val = response[0]
-    print(f"Response register value: 0x{resp_val:02X}")
-
-    if resp_val == SUCCESS_CODE:
-        print(f"Operation '{operation_description}' succeeded (0x{resp_val:02X}).")
-        return True
-    else:
-        print(f"Operation '{operation_description}' failed or returned unexpected code (0x{resp_val:02X}).")
-        return False
+    resp_val = response_bytes[0]
+    return resp_val
 
 # -------------------------------------------------------------------
 # Main Firmware Update Flow
@@ -364,19 +342,30 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
 
         # 5. Clear the firmware metadata in flash memory
         # 5.a Fill data memory with zeroes
-        # NEW: Fill data memory from DATA_MEM_LOWER_LIMIT to DATA_MEM_UPPER_LIMIT
-        #print(f"Filling data memory with zeroes from 0x{DATA_MEM_LOWER_LIMIT:04X} to 0x{DATA_MEM_UPPER_LIMIT:04X} ...")
-        #for base_addr in range(DATA_MEM_LOWER_LIMIT, DATA_MEM_UPPER_LIMIT + 1, FLASH_ROW_SIZE_BYTES):
-        #    zero_row = [0x00] * FLASH_ROW_SIZE_BYTES
-        #    row_num = base_addr // FLASH_ROW_SIZE_BYTES + 1
+        # 5.b Use the FLASH_ROW_READ_WRITE register to trigger a write of the “zero” buffer into the metadata flash row.
 
-        #    print(f"  Writing zero row #{row_num}, offset 0x{base_addr:04X}")
-        #    flash_row_read_write(bus, row_num, zero_row, ccg_slave_address)
-        #    #time.sleep(0.5)
+        i2c_write_block_16b_offset(bus, ccg_slave_address, FLASH_ROW_READ_WRITE_OFFSET, [0x10])
+        # 0x01: Flash Write
+        # 0x10: Flash Read
+        time.sleep(0.2)
+        response_code = check_response_code(bus, ccg_slave_address)
+        print(f"Response code for initiating Flash Read Command is = 0x{response_code:02X}")
 
-        #    if not check_for_success_response(bus, ccg_slave_address, f"Write zero row #{row_num}"):
-        #        print("ERROR: Writing zero row failed. Aborting update.")
-        #        return
+        zero_row = [0x00] * FLASH_ROW_SIZE_BYTES
+        flash_row_read_write(bus, 0xFF80, zero_row, ccg_slave_address) # FW1
+        #row_data = flash_row_read_write(bus, 0xFF00, zero_row, ccg_slave_address) # FW2
+
+        time.sleep(0.2)
+
+        row_data = flash_row_read_write(bus, 0x0A00, None ,ccg_slave_address, 64)
+
+        if row_data is None:
+            print("Failed to read row data.")
+        else:
+            # Format the bytes for easier reading
+            row_hex = [f"0x{b:02X}" for b in row_data]
+            print("64-byte read from 0x0A00 memory address:\n", row_hex)
+
 
         # 5.b Use the FLASH_ROW_READ_WRITE register to trigger a write of the “zero” buffer into the metadata flash row.
         if pre_boot_device_mode == 0x86:
@@ -456,7 +445,7 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
         # Write phase: send the "read" command
         i2c_write_block_16b_offset(bus, ccg_slave_address, FLASH_ROW_READ_WRITE_OFFSET, cmd_buf)
 
-        if not check_for_success_response(bus, ccg_slave_address, f"write phase to read row #{0x2300}"):
+        if not check_response_code(bus, ccg_slave_address):
             print("Aborting due to error writing flash row.")
 
         # Read phase: read 64 bytes of data from the flash row
@@ -467,8 +456,7 @@ def update_firmware_ccg6df_example(hex_file_path, ccg_slave_address):
             64,
         )
 
-        if not check_for_success_response(bus, ccg_slave_address, f"read phase to read row#{0x2300}"):
-            print("Aborting due to error writing flash row.")
+
 
         # 'read_row_val' is now a list of 64 bytes from the specified flash row
         # Print the read values in hex form, e.g. 0x01, 0xFF, ...
