@@ -1,5 +1,4 @@
 
-"""
 Notes:
 1. Any data memory access operation (valid or invalid) does not result in response  or event generation.
 
@@ -46,5 +45,3 @@ Converting 1280 to hexadecimal
 1280 in decimal = 0x0500 in hexadecimal.
 1280 / 64 = 20 rows of 64 Bytes. --> first 20 rows in FW files are for Notebook Bootloader.
 
-"""
-"""
