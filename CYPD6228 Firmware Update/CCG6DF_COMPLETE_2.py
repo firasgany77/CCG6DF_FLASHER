@@ -43,11 +43,22 @@ DEVICE_MODE_OFFSET           = 0x0000
 ENTER_FLASHING_MODE_OFFSET   = 0x000A
 JUMP_TO_BOOT_OFFSET          = 0x0007
 FLASH_ROW_READ_WRITE_OFFSET  = 0x000C
+# “INVALID COMMAND = 0x05 ” if not in flashing mode or if signature or command field is invalid.
+# “INVALID ARGUMENT = 0x09 " if flash row specified is invalid.
+# "SUCCESS = 0x02 " if flash write operation is successful.
+# "FLASH DATA AVAILABLE = 0x03" if flash read operation is successful.
+
+
+
+FlASH_UPDATE_FAILED          = 0x07 # response code
+BOOT_LOADER_LAST_ROW         = 0x0004 # number of last flash row occupied by Bootloader.
 RESET_OFFSET                 = 0x0800 # 0x0800 the one that works
 PDPORT_ENABLE_OFFSET         = 0x002C
 FIRMWARE_BINARY_LOCATION_OFFSET = 0x0028
 
 PORT_DISABLE_OPCODE          = 0x11
+READ_WRITE_I2C_DEVICE_REGISTER = 0x3C # Opcode for HPIv2 port-0 address: 0x1006
+
 PD_CONTROL_OFFSET_PORT0      = 0x1006
 PD_CONTROL_OFFSET_PORT1      = 0x2006
 RESPONSE_OFFSET_PORT0        = 0x1400
