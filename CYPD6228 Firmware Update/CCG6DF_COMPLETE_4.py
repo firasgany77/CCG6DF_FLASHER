@@ -260,6 +260,16 @@ def update_firmware_ccg6df_example(hex_file_path):
         enter_flashing_mode(bus)
         time.sleep(0.1)
 
+        # 4) Clear FW1 metadata row => write 64 bytes of 0x00
+        print(f"Clearing FW1 metadata row at 0x{FW1_METADATA_ROW:04X} ...")
+        zero_row = [0x00] * FLASH_ROW_SIZE_BYTES
+        # The row index is FW1_METADATA_ROW / 64
+        meta_row_num = FW1_METADATA_ROW // 64
+        flash_row_read_write(bus, meta_row_num, zero_row)
+        time.sleep(0.1)
+        if not check_for_success_response(bus, "Clearing FW1 metadata row"):
+            print("Warning: Clearing metadata row did not return success. Continuing anyway.")
+
         # Parse the HEX file
         ih = IntelHex()
         ih.loadhex(firmware_hex_path)
@@ -290,6 +300,7 @@ def update_firmware_ccg6df_example(hex_file_path):
             # Optionally wait/check success here
 
         # (Optional) Validate FW if needed
+
         # reset, check mode, etc.
         reset_device(bus, 1)
         time.sleep(0.3)
@@ -315,25 +326,16 @@ if __name__ == "__main__":
 
     time.sleep(0.6)
 
-
-    #reset_device(bus, 1)
-    #print("Reset device after update_firmware_ccg6df_ex finished")
-
-    time.sleep(0.6)
-
     #print("Enable PD ports...")
     #enable_pd_ports(bus)
 
-
-    reset_device(bus, 1)
-    print("Device Reset")
+    #reset_device(bus, 1)
+    #print("Device Reset")
 
     time.sleep(1)
 
     mode = read_device_mode(bus)
     print(f"Post-reset device mode: 0x{mode:02X}")
-
-
 
     #i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, PD_CONTROL_OFFSET_PORT0, [0x11])
     #i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, PD_CONTROL_OFFSET_PORT0, [0x10])
