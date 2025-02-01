@@ -111,10 +111,26 @@ def validate_firmware(bus, which_fw=1):
     i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, VALIDATE_FW_OFFSET, [which_fw & 0xFF])
     time.sleep(0.1)
 
+def read_and_clear_intr_reg(bus):
+    """Reads INTR_REG (1 byte) and writes back any set bits to clear them."""
+    intr_val_list = i2c_read_block_16b_offset(bus, I2C_SLAVE_ADDR, INTR_REG, 1)
+    if intr_val_list:
+        intr_val = intr_val_list[0]
+        if intr_val != 0:
+            print(f"[Interrupt] INTR_REG read => 0x{intr_val:02X}, clearing it...")
+            # Write back the same bits to clear them
+            i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, INTR_REG, [intr_val])
+            time.sleep(0.01)
+        else:
+            print("[Interrupt] INTR_REG read => 0x00, no interrupt bits set.")
+    else:
+        print("[Interrupt] Could not read INTR_REG (no data returned).")
+
 def check_for_success_response(bus, operation_description):
     """the EC/CPU must read the appropriate response register(s) and clear the interrupt status
     before initiating a new command and/or register write. that is, the INTR# signal should be
     in the de-asserted state at the time of initiating any new command or register write"""
+    read_and_clear_intr_reg(bus)
     print(f"Checking response for operation: {operation_description}")
     resp = i2c_read_block_16b_offset(bus, I2C_SLAVE_ADDR, RESPONSE_OFFSET_PORT0, 1)
     if not resp:
@@ -141,6 +157,7 @@ def check_response_code(bus, ccg_slave_address):
 
     resp_val = response_bytes[0]
     return resp_val
+
 # -------------------------------------------------------------------
 # Main Firmware Update Flow
 # -------------------------------------------------------------------
