@@ -20,7 +20,7 @@ from intelhex import IntelHex
 # I2C Bus / Address / Constants
 # -------------------------------------------------------------------
 I2C_BUS                = 2       # Example: I2C bus number
-I2C_SLAVE_ADDR         = 0x42    # The CCG6DF device's I2C address
+I2C_SLAVE_ADDR         = 0x40    # The CCG6DF device's I2C address
 FLASH_ROW_SIZE_BYTES   = 64      # Flash row size for CCG6DF
 SUCCESS_CODE           = 0x02     # Example "command success" code
 
@@ -249,7 +249,9 @@ def update_firmware_ccg6df_example(hex_file_path):
         disable_pd_ports(bus)
         time.sleep(0.5) # disabling this timer will prevent entering boot mode
         # on the other hand adding it stops successful write using flash_row_read_write function. 
-
+        if not check_for_success_response(bus, f"Disabling PD Port #{0}"):
+            print("Aborting due to error writing flash row.")
+            return
 
         #print("Jumping to bootloader mode...")
         #jump_to_boot(bus)
@@ -266,26 +268,27 @@ def update_firmware_ccg6df_example(hex_file_path):
         enter_flashing_mode(bus)
         time.sleep(0.1)
 
+        if not check_for_success_response(bus, f"Entering Flashing Mode"):
+            print("Aborting due to error Entering Flashing Mode.")
+            return
+
         # 4. Clear FW1 metadata row
         print(f"Clearing FW1 metadata row at 0x{FW1_METADATA_ROW:04X} ...")
         zero_row = [0x00] * FLASH_ROW_SIZE_BYTES
         flash_row_read_write(bus, FW2_METADATA_ROW, zero_row)
+        row_number = 0x0D40
+        row_data = flash_row_read_write(bus, row_number, None)
 
-        ################################################################################################################
-        #################################### READ RESPONSE FROM WRITING ZERO BUFFER ####################################
-        #resp_zero_buffer = read_response_register_port0(bus)
-        #if resp_zero_buffer is None:
-        #    print("No response from writing zero buffer received (None).")
-        #else:
-        #    print(f"Response code for writing zero buffer: 0x{resp_zero_buffer:02X}")
-        #    if resp_zero_buffer == SUCCESS_CODE:
-        #        print("Command succeeded!")
-        #    else:
-        #        print("Command returned an error or unexpected code.")
-        ################################################################################################################
-        ################################################################################################################
+        if row_data is None:
+            print("Failed to read row data.")
+        else:
+            # Format the bytes for easier reading
+            row_hex = [f"0x{b:02X}" for b in row_data]
+            print(f"64-byte read from 0x{row_number:04X} memory address:\n", row_hex)
 
         time.sleep(0.1)
+
+        """
         # 5. Program each row from the IntelHex file
         print(f"Parsing HEX file: {hex_file_path}")
         ih = IntelHex(hex_file_path)
@@ -337,7 +340,7 @@ def update_firmware_ccg6df_example(hex_file_path):
                 print("Aborting due to error writing flash row.")
                 return
 
-
+        """
         # 6. Validate firmware if needed
         print("Validating firmware (placeholder)...")
         validate_firmware(bus)
