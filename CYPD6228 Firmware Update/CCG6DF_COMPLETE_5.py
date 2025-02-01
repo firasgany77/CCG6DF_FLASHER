@@ -20,7 +20,7 @@ from intelhex import IntelHex
 # I2C Bus / Address / Constants
 # -------------------------------------------------------------------
 I2C_BUS                = 2        # Example: I2C bus number
-I2C_SLAVE_ADDR         = 0x40     # The CCG6DF device's I2C address
+I2C_SLAVE_ADDR         = 0x40    # The CCG6DF device's I2C address
 FLASH_ROW_SIZE_BYTES   = 64       # Flash row size for CCG6DF
 SUCCESS_CODE           = 0x02     # Example "command success" code
 
@@ -130,7 +130,7 @@ def check_for_success_response(bus, operation_description):
     """the EC/CPU must read the appropriate response register(s) and clear the interrupt status
     before initiating a new command and/or register write. that is, the INTR# signal should be
     in the de-asserted state at the time of initiating any new command or register write"""
-    read_and_clear_intr_reg(bus)
+    #read_and_clear_intr_reg(bus)
     print(f"Checking response for operation: {operation_description}")
     resp = i2c_read_block_16b_offset(bus, I2C_SLAVE_ADDR, RESPONSE_OFFSET_PORT0, 1)
     if not resp:
@@ -161,11 +161,17 @@ def check_response_code(bus, ccg_slave_address):
 # -------------------------------------------------------------------
 # Main Firmware Update Flow
 # -------------------------------------------------------------------
-def update_firmware_ccg6df_example(hex_file_path):
+def update_firmware_ccg6df_example(hex_file_path, bus):
+
     print("Opening I2C bus:", I2C_BUS, "Device address:", hex(I2C_SLAVE_ADDR))
-    bus = smbus2.SMBus(I2C_BUS)
 
     try:
+
+        # reset_device(bus, 1)  # Device-RESET
+        reset_device(bus, 0) # I2C-RESET
+
+        time.sleep(0.3)
+
         # 1) Check Device Mode Register
         mode_before = read_device_mode(bus)
         print("Current device mode (raw):", hex(mode_before))
@@ -174,13 +180,12 @@ def update_firmware_ccg6df_example(hex_file_path):
         print("Disabling PD ports...")
         disable_pd_ports(bus)
         time.sleep(0.6)
-        print("Clearing Interrupt..")
-        i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, INTR_REG, [0xFF])
+        #print("Clearing Interrupt..")
+        #i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, INTR_REG, [0xFF])
         time.sleep(0.6)
         if not check_for_success_response(bus, "Disabling PD Port #0"):
             print("Aborting. Could not disable PD ports.")
             return
-
 
         # 2.c initiate the JUMP_TO_BOOT command
         print("Jumping to Bootloader mode...")
@@ -279,13 +284,33 @@ def update_firmware_ccg6df_example(hex_file_path):
             print("Device is not in FW mode. Possibly still in bootloader or an error occurred.")
 
     finally:
+
+        reset_device(bus, 0)
+        # reset_device(bus, 1)
+        time.sleep(0.3)
+
         bus.close()
 
 
 if __name__ == "__main__":
     firmware_hex_path = "/home/firas/Documents/CYPD6228/CYPD6228-96BZXI_notebook_dualapp_usb4_228_2.hex"
 
+    bus = smbus2.SMBus(I2C_BUS)
+
+    read_and_clear_intr_reg(bus)
+
+    reset_device(bus, 1)
+    reset_device(bus, 0)
+    i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, PD_CONTROL_OFFSET_PORT0, [10])
+    i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, PD_CONTROL_OFFSET_PORT1, [10])
+    i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, PDPORT_ENABLE_OFFSET, [0x11])
+    i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, PDPORT_ENABLE_OFFSET, [0x10])
+    i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, PDPORT_ENABLE_OFFSET, [0x01])
+
     print("Starting firmware update for CCG6DF device.")
-    update_firmware_ccg6df_example(firmware_hex_path)
+    update_firmware_ccg6df_example(firmware_hex_path, bus)
+
+
+    bus.close()
 
     print("Done.")
