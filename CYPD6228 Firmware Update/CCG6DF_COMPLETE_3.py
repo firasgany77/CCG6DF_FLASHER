@@ -17,12 +17,17 @@ from smbus2 import i2c_msg
 from intelhex import IntelHex
 import random
 
+# How to enable:
+# 1. Use 0x42 Slave Address.
+# 2. Connect Mini-Prog4.
+# 3. Patch.
+# 4. Run.
 
 # -------------------------------------------------------------------
 # I2C Bus / Address / Constants
 # -------------------------------------------------------------------
 I2C_BUS                = 2       # Example: I2C bus number
-I2C_SLAVE_ADDR         = 0x40    # The CCG6DF device's I2C address
+I2C_SLAVE_ADDR         = 0x42    # The CCG6DF device's I2C address
 FLASH_ROW_SIZE_BYTES   = 64      # Flash row size for CCG6DF
 SUCCESS_CODE           = 0x02     # Example "command success" code
 
@@ -377,10 +382,10 @@ def update_firmware_ccg6df_example(hex_file_path):
 if __name__ == "__main__":
     firmware_hex_path = "/home/firas/Documents/CYPD6228/CYPD6228-96BZXI_notebook_dualapp_usb4_228_2.hex"
 
-    print("Resetting device at startup...")
-    bus = smbus2.SMBus(I2C_BUS)
-    reset_device_startup(bus)
-    bus.close()
+    #print("Resetting device at startup...")
+    #bus = smbus2.SMBus(I2C_BUS)
+    #reset_device_startup(bus)
+    #bus.close()
 
     print("Starting firmware update for CCG6DF device (two-byte offset, i2c_rdwr for >32 bytes).")
     update_firmware_ccg6df_example(firmware_hex_path)
