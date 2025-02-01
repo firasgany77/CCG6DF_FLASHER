@@ -44,7 +44,7 @@ RESPONSE_OFFSET_PORT0        = 0x1400
 RESPONSE_OFFSET_PORT1        = 0x2400
 
 FW1_METADATA_ROW             = 0xFFC0
-FW2_METADATA_ROW             = 0xFF00
+FW2_METADATA_ROW             = 0xFF40
 
 # -------------------------------------------------------------------
 # Helper functions (same as your code) ...
@@ -160,13 +160,17 @@ def update_firmware_ccg6df_example(hex_file_path):
         print("Jumping to bootloader mode...")
         jump_to_boot(bus)
         time.sleep(0.2)
+        mode_boot = read_device_mode(bus)
+        print("Device mode after jump:", hex(mode_boot))
+
+        print("Jumping to Alt-FW...")
+        i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, JUMP_TO_BOOT_OFFSET, [0x41]) # Signature: A
+        time.sleep(0.2)
 
         # Confirm bootloader mode = 0x84
         mode_boot = read_device_mode(bus)
         print("Device mode after jump:", hex(mode_boot))
-        if mode_boot != 0x84:
-            print("ERROR: Not in bootloader mode. Aborting.")
-            return
+
 
         # 3) Enter flashing mode
         print("Entering flashing mode...")
@@ -175,10 +179,10 @@ def update_firmware_ccg6df_example(hex_file_path):
         # (Optionally check for success response here if needed)
 
         # 4) Clear FW1 metadata row => write 64 bytes of 0x00
-        print(f"Clearing FW1 metadata row at 0x{FW1_METADATA_ROW:04X} ...")
+        print(f"Clearing FW1 metadata row at 0x{FW2_METADATA_ROW:04X} ...")
         zero_row = [0x00] * FLASH_ROW_SIZE_BYTES
         # The row index is FW1_METADATA_ROW / 64
-        meta_row_num = FW1_METADATA_ROW // 64
+        meta_row_num = FW2_METADATA_ROW // 64
         flash_row_read_write(bus, meta_row_num, zero_row)
         time.sleep(0.1)
         #response_code = check_response_code(bus, I2C_SLAVE_ADDR)
