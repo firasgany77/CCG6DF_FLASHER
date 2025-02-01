@@ -20,7 +20,7 @@ from intelhex import IntelHex
 # I2C Bus / Address / Constants
 # -------------------------------------------------------------------
 I2C_BUS                = 2        # Example: I2C bus number
-I2C_SLAVE_ADDR         = 0x40     # The CCG6DF device's I2C address
+I2C_SLAVE_ADDR         = 0x42     # The CCG6DF device's I2C address
 FLASH_ROW_SIZE_BYTES   = 64       # Flash row size for CCG6DF
 SUCCESS_CODE           = 0x02     # Example "command success" code
 
@@ -120,8 +120,6 @@ def check_for_success_response(bus, operation_description):
     if not resp:
         print("ERROR: No data read from response register.")
         return False
-    #clear interrupt:
-    i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, INTR_REG, [0xFF])
     val = resp[0]
     print(f"Response register value: 0x{val:02X}")
     if val == SUCCESS_CODE:
@@ -159,10 +157,12 @@ def update_firmware_ccg6df_example(hex_file_path):
         print("Disabling PD ports...")
         disable_pd_ports(bus)
         time.sleep(0.6)
-        # 2.b Wait for Success response
+        # clear interrupt:
+        i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, 0x0006, [0xFF])
         if not check_for_success_response(bus, "Disabling PD Port #0"):
             print("Aborting. Could not disable PD ports.")
             return
+
 
         # 2.c initiate the JUMP_TO_BOOT command
         print("Jumping to Bootloader mode...")
