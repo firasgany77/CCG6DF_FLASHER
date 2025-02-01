@@ -15,6 +15,8 @@ import smbus2
 import time
 from smbus2 import i2c_msg
 from intelhex import IntelHex
+import random
+
 
 # -------------------------------------------------------------------
 # I2C Bus / Address / Constants
@@ -53,6 +55,14 @@ def i2c_write_block_16b_offset(bus, dev_addr, register_offset_16b, data_bytes):
     Then the payload (data_bytes) follows.
     We create a single i2c_msg.write() message and pass it to bus.i2c_rdwr(),
     which avoids the 32-byte limit of write_i2c_block_data.
+
+    0xABCD = 1010 1011 1100 1101
+    0xFF   = 0000 0000 1111 1111
+
+    0xABCD & 0xFF = 1100 1101 = 0xCD = LS_BYTE
+    (0xABCD >> 8) ---> move all bit 8 times to the right =  0000 0000 1010 1011
+    (0xABCD >> 8) & 0xFF  = 1010 1011 = 0xAB = MS_BYTE
+
     """
     ls_byte = register_offset_16b & 0xFF
     ms_byte = (register_offset_16b >> 8) & 0xFF
@@ -194,13 +204,9 @@ def check_for_success_response(bus, operation_description):
     Reads the response register at RESPONSE_OFFSET_PORT0.
     If the response equals SUCCESS_CODE, prints success;
     otherwise, prints an error.
-
-    :param bus: The smbus2.SMBus instance
-    :param operation_description: String describing the operation we are verifying
-    :return: True if success, False otherwise
     """
     print(f"Checking response for operation: {operation_description}")
-    response = i2c_read_block_16b_offset(bus, I2C_SLAVE_ADDR, RESPONSE_OFFSET_PORT0, 1)
+    response = i2c_read_block_16b_offset(bus,I2C_SLAVE_ADDR, RESPONSE_OFFSET_PORT0, 1)
     if not response:
         print("ERROR: No data read from response register.")
         return False
@@ -247,14 +253,15 @@ def update_firmware_ccg6df_example(hex_file_path):
         # If in FW mode => disable PD ports => jump to boot
         print("Disabling PD ports...")
         disable_pd_ports(bus)
-        time.sleep(0.5) # disabling this timer will prevent entering boot mode
+        time.sleep(0.6) # disabling this timer will prevent entering boot mode
         # on the other hand adding it stops successful write using flash_row_read_write function. 
-        if not check_for_success_response(bus, f"Disabling PD Port #{0}"):
+        if not check_for_success_response(bus,f"Disabling PD Port #{0}"):
             print("Aborting due to error writing flash row.")
             return
 
-        #print("Jumping to bootloader mode...")
-        #jump_to_boot(bus)
+        print("Jumping to bootloader mode...")
+        jump_to_boot(bus)
+        # can't enable_jump_to_boot after flashing mode is enabled.
 
         # Wait/poll for boot or "Reset Complete" event in real usage
         time.sleep(0.5)
@@ -268,14 +275,23 @@ def update_firmware_ccg6df_example(hex_file_path):
         enter_flashing_mode(bus)
         time.sleep(0.1)
 
-        if not check_for_success_response(bus, f"Entering Flashing Mode"):
-            print("Aborting due to error Entering Flashing Mode.")
-            return
+        #if not check_for_success_response(bus, f"Entering Flashing Mode"):
+        #    print("Aborting due to error Entering Flashing Mode.")
+        #    return
 
         # 4. Clear FW1 metadata row
         print(f"Clearing FW1 metadata row at 0x{FW1_METADATA_ROW:04X} ...")
         zero_row = [0x00] * FLASH_ROW_SIZE_BYTES
         flash_row_read_write(bus, FW2_METADATA_ROW, zero_row)
+
+        rowNumLSB = 0x34
+        rowNumMSB = 0x12
+        row_data = [random.randrange(256) for _ in range(64)]
+        cmd_buf = [0x46, 0x00, rowNumLSB, rowNumMSB]
+
+
+        i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, FLASH_ROW_READ_WRITE_OFFSET, [0x01])
+
         row_number = 0x0D40
         row_data = flash_row_read_write(bus, row_number, None)
 
