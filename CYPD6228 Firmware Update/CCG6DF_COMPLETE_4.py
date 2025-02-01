@@ -41,6 +41,7 @@ FLASH_ROW_READ_WRITE_OFFSET  = 0x000C
 RESET_OFFSET                 = 0x0800 # 0x0800 the one that works
 PDPORT_ENABLE_OFFSET         = 0x002C
 VALIDATE_FW_OFFSET           = 0x000B
+FIRMWARE1_START              = 0x0500
 
 PORT_DISABLE_OPCODE          = 0x11
 PORT_ENABLE_OPCODE           = 0x10
@@ -230,94 +231,73 @@ def check_for_success_response(bus, operation_description):
 # Main Firmware Update Flow
 # -------------------------------------------------------------------
 def update_firmware_ccg6df_example(hex_file_path):
-    """
-    Example:
-      1. Check device mode; if in FW mode => disable PD ports, jump to boot
-      2. Enter flashing mode
-      3. Clear FW metadata row
-      4. Program each row from the IntelHex
-      5. Validate (optional)
-      6. Reset
-
-    Using i2c_rdwr to allow writes > 32 bytes in a single transaction.
-    """
     print("Opening I2C bus:", I2C_BUS, "Device address:", hex(I2C_SLAVE_ADDR))
     bus = smbus2.SMBus(I2C_BUS)
 
     try:
-
         # 1. Read device mode
         mode_before = read_device_mode(bus)
         print("Current device mode (raw):", hex(mode_before))
 
-        # If in FW mode => disable PD ports => jump to boot
+        # Disable PD ports, jump to boot, etc.
         print("Disabling PD ports...")
         disable_pd_ports(bus)
-        time.sleep(0.6) # disabling this timer will prevent entering boot mode
-        # on the other hand adding it stops successful write using flash_row_read_write function. 
-        if not check_for_success_response(bus,f"Disabling PD Port #{0}"):
+        time.sleep(0.6)
+        if not check_for_success_response(bus, f"Disabling PD Port #{0}"):
             print("Aborting due to error writing flash row.")
             return
 
         print("Jumping to bootloader mode...")
         jump_to_boot(bus)
-        # 1. can't enable_jump_to_boot after flashing mode is enabled.
-        # 2. Once you jump to bootloader and/or enter flashing mode,
-        # the device is typically in mode 0x84. The bootloader often ignores normal
-        # PD port commands. The bootloader’s primary function is to allow flash updates,
-        # not to configure or enable power‐delivery ports.
+        time.sleep(0.2)
 
+        # Confirm mode=0x84
+        if read_device_mode(bus) != 0x84:
+            print("Error: not in boot mode.")
+            return
 
-        # Wait/poll for boot or "Reset Complete" event in real usage
-        time.sleep(0.5)
-
-        # 2. Check if in boot mode now
-        mode_boot = read_device_mode(bus)
-        print("Device mode after jump:", hex(mode_boot))
-
-        # 3. Enter flashing mode
-        print("Entering flashing mode...")
+        # Enter flashing mode
         enter_flashing_mode(bus)
         time.sleep(0.1)
 
-        #if not check_for_success_response(bus, f"Entering Flashing Mode"):
-        #    print("Aborting due to error Entering Flashing Mode.")
-        #    return
+        # Parse the HEX file
+        ih = IntelHex()
+        ih.loadhex(firmware_hex_path)
+        start_addr = FIRMWARE1_START
+        end_addr = 0x2840 + (64-1) # = 0x287F
+        # Processes the entire row from 0x2840 through 0x287F (64 bytes total),
 
-        # 4. Clear FW1 metadata row
-        #print(f"Clearing FW1 metadata row at 0x{FW1_METADATA_ROW:04X} ...")
-        #zero_row = [0x00] * FLASH_ROW_SIZE_BYTES
-        #flash_row_read_write(bus, FW1_METADATA_ROW, zero_row)
+        row_size = 64
 
-        # 5. Write Random 64-Bytes to Target Address in Flash Data Memory:
-        target_address = 0x3412
-        rowNumLSB = target_address & 0xFF
-        rowNumMSB = (target_address >> 8) & 0xFF
+        for base_addr in range(start_addr, end_addr + 1, row_size):
+            # Build 64-byte block
+            block_data = []
+            for offset in range(row_size):
+                addr = base_addr + offset
+                if addr > end_addr:
+                    block_data.append(0xFF)
+                else:
+                    block_data.append(ih[addr])
 
-        row_data = [random.randrange(256) for _ in range(64)]
-        cmd_buf = [0x46, 0x00, rowNumLSB, rowNumMSB] + row_data
+            row_num = (base_addr - FIRMWARE1_START) // row_size
 
-        i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, FLASH_ROW_READ_WRITE_OFFSET, cmd_buf)
+            # NEW: Print the 64 bytes in hex
+            row_hex = [f"0x{b:02X}" for b in block_data]
+            print(f"Programming row #{row_num} (base=0x{base_addr:04X}) with data:\n", row_hex)
+            # End new line
 
-        if row_data is None:
-            print("Failed to read row data.")
-        else:
-            # Format the bytes for easier reading
-            row_hex = [f"0x{b:02X}" for b in row_data]
-            #print(f"64-byte read from 0x{target_address:04X} memory address:\n", row_hex)
-            print(f"random row data:\n", row_hex)
+            flash_row_read_write(bus, row_num, block_data)
+            # Optionally wait/check success here
 
-
-        # 6. VALIDATE_FW = 0x000B
-        i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, VALIDATE_FW_OFFSET, [0x02]) #FW2
-        i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, VALIDATE_FW_OFFSET, [0x01]) #FW1
-
-        time.sleep(0.6)
-
+        # (Optional) Validate FW if needed
+        # reset, check mode, etc.
+        reset_device(bus, 1)
+        time.sleep(0.3)
+        mode = read_device_mode(bus)
+        print(f"Device mode after reset: 0x{mode:02X}")
 
     finally:
         bus.close()
-
 # -------------------------------------------------------------------
 # Example usage if run directly
 # -------------------------------------------------------------------

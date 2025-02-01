@@ -66,3 +66,56 @@ To prevent such false validation, it is recommended that the EC clears the metad
 the new image. The EC should also ensure that the metadata flash row is updated after all other rows as part of
 the firmware update sequence.
 
+
+        """
+        # 5. Program each row from the IntelHex file
+        print(f"Parsing HEX file: {hex_file_path}")
+        ih = IntelHex(hex_file_path)
+
+        start_addr = ih.minaddr()
+        end_addr = ih.maxaddr()
+
+        print(f"start_addr: {start_addr}")
+        print(f"end_addr: {end_addr}")
+
+        # Enforce a maximum address limit to match device flash size (e.g., 64 KB)
+        MAX_FLASH_ADDRESS = 0xFFFF  # 64 KB for CCG6DF
+        if end_addr > MAX_FLASH_ADDRESS:
+            print(
+                f"Warning: HEX file contains addresses beyond device's flash range. Limiting to 0x{MAX_FLASH_ADDRESS:04X}.")
+            end_addr = MAX_FLASH_ADDRESS
+
+        # Ensure the jumps are aligned to increments of 0x40
+        INCREMENT = 0x40  # Increment size for each row
+        print(f"Programming from 0x{start_addr:04X} to 0x{end_addr:04X} in increments of 0x{INCREMENT:02X}.")
+
+        for base_addr in range(start_addr, end_addr + 1, INCREMENT):
+            row_data = []
+            is_empty = True  # Flag to detect empty rows
+
+            for offset in range(INCREMENT):
+                addr = base_addr + offset
+                if addr > end_addr:
+                    row_data.append(0xFF)  # Fill with padding if beyond end address
+                else:
+                    value = ih[addr] & 0xFF
+                    row_data.append(value)
+                    if value != 0x00:  # Check if row has meaningful data
+                        is_empty = False
+
+            if is_empty:
+                # Skip flashing this row since it's empty
+                print(f"Skipping empty row at flash offset: 0x{base_addr:04X}")
+                continue
+
+            # Write the row to flash
+            row_num = base_addr // INCREMENT
+            print(f"Writing row #{row_num}, flash offset: 0x{base_addr:04X}, data: {row_data[:8]}...")
+
+            flash_row_read_write(bus, row_num, row_data)
+            time.sleep(0.01)  # Minimal delay per row
+            # Step 5a: Wait for "SUCCESS" response after each row write
+            if not check_for_success_response(bus, f"write row #{row_num}"):
+                print("Aborting due to error writing flash row.")
+                return
+        """
