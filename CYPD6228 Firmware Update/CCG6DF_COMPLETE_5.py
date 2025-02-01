@@ -20,7 +20,7 @@ from intelhex import IntelHex
 # I2C Bus / Address / Constants
 # -------------------------------------------------------------------
 I2C_BUS                = 2        # Example: I2C bus number
-I2C_SLAVE_ADDR         = 0x42     # The CCG6DF device's I2C address
+I2C_SLAVE_ADDR         = 0x40     # The CCG6DF device's I2C address
 FLASH_ROW_SIZE_BYTES   = 64       # Flash row size for CCG6DF
 SUCCESS_CODE           = 0x02     # Example "command success" code
 
@@ -145,40 +145,44 @@ def update_firmware_ccg6df_example(hex_file_path):
     bus = smbus2.SMBus(I2C_BUS)
 
     try:
-        # 1) Read device mode
+        # 1) Check Device Mode Register
         mode_before = read_device_mode(bus)
         print("Current device mode (raw):", hex(mode_before))
 
-        # 2) Disable PD ports, jump to boot
+        # 2) 2.a If CCG device is in Firmware Mode - Disable the PD Port using the Port Disable Command:
         print("Disabling PD ports...")
         disable_pd_ports(bus)
         time.sleep(0.6)
+        # 2.b Wait for Success response
         if not check_for_success_response(bus, "Disabling PD Port #0"):
             print("Aborting. Could not disable PD ports.")
             return
 
-        print("Jumping to bootloader mode...")
+        # 2.c initiate the JUMP_TO_BOOT command
+        print("Jumping to Bootloader mode...")
         jump_to_boot(bus)
+        # 2.d Wait for a RESET_COMPLETE or event (or ~10ms delay).
         time.sleep(0.2)
+        # 3. Read DEVICE_MODE Register and verify that device is in BootLoader Mode.
         mode_boot = read_device_mode(bus)
         print("Device mode after jump:", hex(mode_boot))
 
         #print("Jumping to Alt-FW...")
         #i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, JUMP_TO_BOOT_OFFSET, [0x41]) # Signature: A
         #time.sleep(0.2)
-
         # Check Device Mode after Jump:
-        mode_boot = read_device_mode(bus)
-        print("Device mode after jump:", hex(mode_boot))
+        #mode_boot = read_device_mode(bus)
+        #print("Device mode after jump t0 ALT-FW:", hex(mode_boot))
 
 
-        # 3) Enter flashing mode
+        # 4. Enter flashing mode
         print("Entering flashing mode...")
         enter_flashing_mode(bus)
         time.sleep(0.1)
         # (Optionally check for success response here if needed)
 
-        # 4) Clear FW1 metadata row => write 64 bytes of 0x00
+        # 5.a Clear FW1 metadata row => write 64 bytes of 0x00
+        # Fill the data memory with zeros (Metadata Memory).
         print(f"Clearing FW1 metadata row at 0x{FW1_METADATA_ROW:04X} ...")
         zero_row = [0x00] * FLASH_ROW_SIZE_BYTES
         # The row index is FW1_METADATA_ROW / 64
@@ -188,8 +192,15 @@ def update_firmware_ccg6df_example(hex_file_path):
         #meta_row_num = (FW1_METADATA_ROW // 64) + 1
         #flash_row_read_write(bus, meta_row_num, zero_row)
 
+        # 5.b USE FLASH_ROW_READ_WRITE reg to trigger a write of the "zero" buffer
+        # into the metadata flash row.
         meta_row_num = (FW1_METADATA_ROW // 64) + 2
         flash_row_read_write(bus, meta_row_num, zero_row)
+
+        # 5.c Wait for a SUCCESS response:
+        if not check_for_success_response(bus, "Response After FW1 Metadata Clear"):
+            print("Aborting. could not clear FW1 Metadata.")
+            return
 
         time.sleep(0.1)
         #response_code = check_response_code(bus, I2C_SLAVE_ADDR)
