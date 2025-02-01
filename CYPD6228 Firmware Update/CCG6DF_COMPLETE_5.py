@@ -35,6 +35,7 @@ RESET_OFFSET                 = 0x0800  # The reset offset that works
 PDPORT_ENABLE_OFFSET         = 0x002C
 VALIDATE_FW_OFFSET           = 0x000B  # Validate FW register offset
 FIRMWARE1_START              = 0x0500  # Start of FW region in flash
+INTR_REG                     = 0x0006
 
 PORT_DISABLE_OPCODE          = 0x11
 PORT_ENABLE_OPCODE           = 0x10
@@ -111,11 +112,16 @@ def validate_firmware(bus, which_fw=1):
     time.sleep(0.1)
 
 def check_for_success_response(bus, operation_description):
+    """the EC/CPU must read the appropriate response register(s) and clear the interrupt status
+    before initiating a new command and/or register write. that is, the INTR# signal should be
+    in the de-asserted state at the time of initiating any new command or register write"""
     print(f"Checking response for operation: {operation_description}")
     resp = i2c_read_block_16b_offset(bus, I2C_SLAVE_ADDR, RESPONSE_OFFSET_PORT0, 1)
     if not resp:
         print("ERROR: No data read from response register.")
         return False
+    #clear interrupt:
+    i2c_write_block_16b_offset(bus, I2C_SLAVE_ADDR, INTR_REG, [0xFF])
     val = resp[0]
     print(f"Response register value: 0x{val:02X}")
     if val == SUCCESS_CODE:
