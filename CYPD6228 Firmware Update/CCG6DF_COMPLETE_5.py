@@ -20,7 +20,7 @@ from intelhex import IntelHex
 # I2C Bus / Address / Constants
 # -------------------------------------------------------------------
 I2C_BUS                = 2        # Example: I2C bus number
-I2C_SLAVE_ADDR         = 0x40    # The CCG6DF device's I2C address
+I2C_SLAVE_ADDR         = 0x40   # The CCG6DF device's I2C address
 FLASH_ROW_SIZE_BYTES   = 64       # Flash row size for CCG6DF
 SUCCESS_CODE           = 0x02     # Example "command success" code
 

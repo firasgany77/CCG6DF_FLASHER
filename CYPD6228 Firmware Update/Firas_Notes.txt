@@ -119,3 +119,11 @@ the firmware update sequence.
                 print("Aborting due to error writing flash row.")
                 return
         """
+
+
+        HOW to Flash with 0x40:
+        1. Flash From MiniProg4
+        2. Disconnect Minprog
+        3. Change 0x40 to 0x42 and try -> Flashing Fails.
+        4. Now Change to 0x40 and it works.
+      
